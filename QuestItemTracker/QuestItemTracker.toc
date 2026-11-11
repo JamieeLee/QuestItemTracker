@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Quest Item Tracker
 ## Notes: Live quests, completed quest import, quest history, and item-to-quest lookup.
-## Author: ChatGPT
+## Author: JamieeLee
 ## Version: 0.3.4
 ## OptionalDeps: QuestieDB
 ## SavedVariables: QuestItemTrackerDB
