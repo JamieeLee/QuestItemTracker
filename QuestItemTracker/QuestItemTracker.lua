@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.4.1
+-- Quest Item Tracker v0.4.2
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -11,6 +11,8 @@ DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login for
 DB.events = DB.events or {}
 DB.items = DB.items or {}
 DB.characters = DB.characters or {}
+-- Tooltip preferences are shared across the account; quest history stays character-scoped.
+DB.settings = type(DB.settings) == "table" and DB.settings or {}
 local CHARACTER_DATA
 
 local MAX_EVENTS = 500
@@ -681,6 +683,182 @@ local function GetTooltipItem(tooltip, data, explicitItemID)
     return nil, nil
 end
 
+-- Keep the default tooltip focused on player-facing information; technical IDs are opt-in.
+local DEFAULT_SETTINGS = {
+    showQuestIDs = false,
+    showItemIDs = false,
+    showQuestLevels = true,
+    showInventoryBreakdown = true,
+}
+local function SettingEnabled(key)
+    local value = DB.settings[key]
+    if value == nil then return DEFAULT_SETTINGS[key] == true end
+    return value == true
+end
+
+local optionsPanel
+local minimapButton
+
+local function SetSolidColor(texture, r, g, b, a)
+    if type(texture.SetColorTexture) == "function" then
+        texture:SetColorTexture(r, g, b, a)
+    else
+        texture:SetTexture(r, g, b, a)
+    end
+end
+
+local function CreateOptionsPanel()
+    if optionsPanel then return optionsPanel end
+    if not UIParent or type(CreateFrame) ~= "function" then return nil end
+
+    local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
+    panel:SetSize(360, 305)
+    panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
+    panel:SetFrameStrata("DIALOG")
+    panel:EnableMouse(true)
+    panel:SetMovable(true)
+    panel:SetClampedToScreen(true)
+    panel:RegisterForDrag("LeftButton")
+    panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+
+    local border = panel:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    SetSolidColor(border, 0.34, 0.43, 0.55, 0.96)
+    local background = panel:CreateTexture(nil, "BORDER")
+    background:SetPoint("TOPLEFT", panel, "TOPLEFT", 2, -2)
+    background:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -2, 2)
+    SetSolidColor(background, 0.055, 0.075, 0.11, 0.98)
+    local stripe = panel:CreateTexture(nil, "ARTWORK")
+    stripe:SetHeight(2)
+    stripe:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -45)
+    stripe:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, -45)
+    SetSolidColor(stripe, 0.38, 0.7, 0.94, 1)
+
+    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
+    title:SetText("Quest Item Tracker")
+    local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
+    subTitle:SetText("Tooltip preferences  |  Saved automatically")
+
+    local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
+    close:SetScript("OnClick", function() panel:Hide() end)
+
+    local entries = {
+        { key = "showQuestIDs", label = "Show quest IDs" },
+        { key = "showItemIDs", label = "Show item IDs" },
+        { key = "showQuestLevels", label = "Show quest levels" },
+        { key = "showInventoryBreakdown", label = "Show bag / bank breakdown" },
+    }
+    local checkboxes = {}
+    for i, entry in ipairs(entries) do
+        local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        checkbox:SetSize(25, 25)
+        checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, -86 - (i - 1) * 36)
+        checkbox:SetChecked(SettingEnabled(entry.key))
+        local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
+        label:SetText(entry.label)
+        checkbox:SetScript("OnClick", function(self)
+            DB.settings[entry.key] = self:GetChecked() == true
+        end)
+        checkboxes[#checkboxes + 1] = { frame = checkbox, key = entry.key }
+    end
+
+    local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    reset:SetSize(125, 24)
+    reset:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 18, 19)
+    reset:SetText("Reset defaults")
+    reset:SetScript("OnClick", function()
+        for key, value in pairs(DEFAULT_SETTINGS) do DB.settings[key] = value end
+        for _, row in ipairs(checkboxes) do
+            row.frame:SetChecked(SettingEnabled(row.key))
+        end
+    end)
+
+    local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -17, 23)
+    hint:SetText("Changes apply on next hover")
+    panel:SetScript("OnShow", function()
+        for _, row in ipairs(checkboxes) do
+            row.frame:SetChecked(SettingEnabled(row.key))
+        end
+    end)
+    panel:Hide()
+    optionsPanel = panel
+    return panel
+end
+
+local function ToggleOptionsPanel()
+    local panel = CreateOptionsPanel()
+    if not panel then
+        Print("Settings UI is unavailable. The minimap may not be initialized yet.")
+        return
+    end
+    if panel:IsShown() then panel:Hide() else panel:Show() end
+end
+
+local function PlaceMinimapButton()
+    if not minimapButton or not Minimap then return end
+    local x = tonumber(DB.settings.minimapX) or 75
+    local y = tonumber(DB.settings.minimapY) or -28
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function CreateMinimapButton()
+    if minimapButton or not Minimap or type(CreateFrame) ~= "function" then return end
+    local button = CreateFrame("Button", "QITMinimapButton", Minimap)
+    button:SetSize(32, 32)
+    button:SetFrameStrata("MEDIUM")
+    button:RegisterForClicks("LeftButtonUp")
+    button:RegisterForDrag("LeftButton")
+    button:SetMovable(true)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(21, 21)
+    icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    local border = button:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetSize(54, 54)
+    border:SetPoint("CENTER", button, "CENTER", 10, -10)
+
+    button:SetScript("OnClick", ToggleOptionsPanel)
+    button:SetScript("OnEnter", function(self)
+        if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Quest Item Tracker", 0.4, 0.8, 1)
+        GameTooltip:AddLine("Click: tooltip settings", 1, 1, 1)
+        GameTooltip:AddLine("Drag: move minimap button", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        if GameTooltip and type(GameTooltip.Hide) == "function" then GameTooltip:Hide() end
+    end)
+    button:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    button:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local x, y = self:GetCenter()
+        local centerX, centerY = Minimap:GetCenter()
+        if x and y and centerX and centerY then
+            local dx, dy = x - centerX, y - centerY
+            local distance = math.sqrt(dx * dx + dy * dy)
+            if distance > 0 then
+                -- Snap to the minimap rim, and remember placement on relog.
+                DB.settings.minimapX = math.floor(dx / distance * 80 + 0.5)
+                DB.settings.minimapY = math.floor(dy / distance * 80 + 0.5)
+            end
+        end
+        PlaceMinimapButton()
+    end)
+    minimapButton = button
+    PlaceMinimapButton()
+end
+
 local function AddTooltipLines(tooltip, data, explicitItemID)
     if not tooltip or type(tooltip.AddLine) ~= "function" then return false end
     local itemID, itemName = GetTooltipItem(tooltip, data, explicitItemID)
@@ -727,7 +905,14 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
 
     tooltip:AddLine(" ")
     tooltip:AddLine("|cff66ccffQuest Item Tracker|r")
-    tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
+    if SettingEnabled("showItemIDs") then
+        tooltip:AddLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
+    end
+    if SettingEnabled("showInventoryBreakdown") then
+        tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
+    else
+        tooltip:AddLine("Have " .. totalHave, 0.75, 0.9, 0.75)
+    end
 
     local recommendation, recommendationColor = AssessItemRetention(matches, activeMap)
     -- Before the scan completes, this list can be incomplete: don't promise
@@ -758,8 +943,12 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             completedCount = completedCount + 1
         end
 
-        tooltip:AddLine(color .. questName .. "|r  (" .. levelText .. ")")
-        tooltip:AddLine("  " .. status, 0.78, 0.78, 0.78)
+        local nameLine = color .. questName .. "|r"
+        if SettingEnabled("showQuestLevels") then nameLine = nameLine .. "  (" .. levelText .. ")" end
+        tooltip:AddLine(nameLine)
+        local statusLine = "  " .. status
+        if SettingEnabled("showQuestIDs") then statusLine = statusLine .. "  |  Quest ID: " .. questID end
+        tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
 
         if entry.required and entry.required > 0 then
             tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
@@ -1062,8 +1251,10 @@ SlashCmdList.QUESTITEMTRACKER = function(message)
         ApiDiagnostics()
     elseif cmd == "apis" then
         ApiDiagnostics()
+    elseif cmd == "options" or cmd == "settings" or cmd == "config" or cmd == "" then
+        ToggleOptionsPanel()
     else
-        Print("Commands: /qit quests | completed [word] | history [word] | scan | items | db")
+        Print("Commands: /qit options | quests | completed [word] | history [word] | scan | items | db")
     end
 end
 
@@ -1084,6 +1275,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         InitializeCharacterData()
         SyncQuestHistory(true)
         InstallTooltipHook()
+        CreateMinimapButton()
         if QuestieDBReady() then BuildQuestItemIndex() end
         -- No user setup/import command is required. The current quest log and
         -- all completed quest IDs are synchronized automatically at login.
