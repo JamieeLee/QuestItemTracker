@@ -519,8 +519,23 @@ local function LookupItemDuringIndex(itemID)
     return next(matches) and matches or nil
 end
 
--- Rewards, NPC/object quest starters and broad ItemDB.relatedQuests links do
--- not establish an inventory-item requirement.
+-- ItemDB.questRewards establishes provenance, NOT an item requirement.
+-- Only miscellaneous/quest-class reward items get source information here.
+-- Ordinary gear rewards stay silent unless separately needed by a quest.
+local function AddRewardProvenance(itemID, matches)
+    local itemClass = tonumber(SafeCall(ItemDB and ItemDB.class, itemID))
+    if itemClass ~= 12 and itemClass ~= 15 then return end
+    if itemClass == 15 and tonumber(SafeCall(ItemDB and ItemDB.subClass, itemID)) ~= 0 then return end
+    local rewardQuests = SafeCall(ItemDB and ItemDB.questRewards, itemID)
+    if type(rewardQuests) ~= "table" then return end
+    for _, rawQuestID in ipairs(rewardQuests) do
+        local questID = tonumber(rawQuestID)
+        local title = questID and SafeCall(QuestDB and QuestDB.name, questID)
+        if questID and questID > 0 and type(title) == "string" and title ~= "" then
+            AddAssociation(matches, questID, "database quest reward")
+        end
+    end
+end
 
 local function NativeBagQuestInfo(itemID, matches)
     if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function"
@@ -616,7 +631,7 @@ end
 
 local function IsInformationalOnly(entry)
     local sources = (entry and entry.sources) or {}
-    return sources["database event item reference"]
+    return (sources["database event item reference"] or sources["database quest reward"])
         and not (sources["database quest starter"] or sources["database objective"]
             or sources["database source item"] or sources["database provided item"]
             or sources["database spell item"] or sources["active quest objective"]
@@ -627,6 +642,9 @@ local function GetQuestStatus(questID, matchesEntry, activeMap)
     local active = activeMap[questID]
     local record = DB.quests[questID]
     if IsInformationalOnly(matchesEntry) then
+        if (matchesEntry.sources or {})["database quest reward"] then
+            return "QUEST REWARD · FUTURE USE UNKNOWN", "|cff88ccff"
+        end
         return "QUEST EVENT REFERENCE · REVIEW", "|cffffcc66"
     end
     local starterOnly = IsQuestStarterOnly(matchesEntry)
@@ -690,11 +708,13 @@ end
 
 local function AssessItemRetention(matches, activeMap)
     local confirmed, activeUse, futureUse, repeatableUse = false, false, false, false
-    local activeStarter, uncertainUse, allCompleted = false, false, true
+    local activeStarter, uncertainUse, rewardOrigin, allCompleted = false, false, false, true
 
     for questID, entry in pairs(matches) do
         if IsInformationalOnly(entry) then
-            uncertainUse = true
+            -- Quest rewards and event references do not establish a requirement.
+            if entry.sources["database quest reward"] then rewardOrigin = true end
+            if entry.sources["database event item reference"] then uncertainUse = true end
         else
             confirmed = true
             local active = activeMap[questID]
@@ -728,6 +748,9 @@ local function AssessItemRetention(matches, activeMap)
     end
     if uncertainUse then
         return "REVIEW — referenced by a quest event; item need is unconfirmed", "|cffffcc66", "review"
+    end
+    if rewardOrigin then
+        return "QUEST REWARD — future use is not confirmed", "|cff88ccff", "reward"
     end
     if activeStarter then
         return "QUEST STARTED — no longer needed to accept this quest", "|cff88ccff", "started"
@@ -1018,6 +1041,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     if startQuest and startQuest > 0 then
         AddAssociation(matches, startQuest, "database quest starter")
     end
+    -- Reward links exist on ItemDB rather than QuestDB. Show only provenance.
+    AddRewardProvenance(itemID, matches)
 
     local itemNameResolved = GetItemName(itemID, itemName)
     local activeMap = GetActiveQuestMap()
@@ -1090,15 +1115,20 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         local level = GetQuestLevel(questID, active)
         local levelText = level and ("Level " .. level) or "Level unknown"
 
-        if active and not IsQuestStarterOnly(entry) and not IsInformationalOnly(entry) then
-            activeCount = activeCount + 1
-        elseif IsQuestRepeatableByID(questID) or not IsQuestCompleted(questID) then
-            futureCount = futureCount + 1
-        else
-            completedCount = completedCount + 1
+        -- Informational reward/event links do not count as future quest USES.
+        if not IsInformationalOnly(entry) then
+            if active and not IsQuestStarterOnly(entry) then
+                activeCount = activeCount + 1
+            elseif IsQuestRepeatableByID(questID) or not IsQuestCompleted(questID) then
+                futureCount = futureCount + 1
+            else
+                completedCount = completedCount + 1
+            end
         end
 
-        local nameLine = color .. questName .. "|r"
+        local isRewardOrigin = IsInformationalOnly(entry)
+            and (entry.sources or {})["database quest reward"]
+        local nameLine = color .. (isRewardOrigin and "Reward from: " or "") .. questName .. "|r"
         if SettingEnabled("showQuestLevels") then nameLine = nameLine .. "  (" .. levelText .. ")" end
         tooltip:AddLine(nameLine)
         -- Future status lines are optional; quest names/levels never disappear.

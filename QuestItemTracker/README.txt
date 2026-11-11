@@ -15,8 +15,12 @@ NEW QUEST ITEM COVERAGE
   server-specific database links.
 - Repeatable quests also use QuestDB.specialFlags.
 
-Rewards and generic related-quest metadata are NOT assumed to be item uses.
-NPC/object/automatic quest starters are followed once accepted in the quest log.
+Miscellaneous/quest-class reward items now show the quest they came from
+(ItemDB.questRewards) as provenance only. Bloody Map (271745) is rewarded by
+Open the Maw (95682) for Horde. This does NOT establish that the reward must
+be kept or can be safely deleted; its future use is unconfirmed.
+Ordinary equipment rewards remain silent; generic related-quest metadata is
+never proof of need. NPC/object/automatic quest starters are tracked live.
 
 FACTION FILTER
 The minimap option "Only show my faction quests" is enabled by default.

@@ -21,7 +21,7 @@ This is the **next test PR** based on the released **v0.1**. `main` and `stable/
 | `QuestDB.extraObjectives()[n][5]` item references | Related event item shown as **REVIEW** only; not proof it must be kept |
 | Native active item bag questID and exact active objective text | Fallback when QuestieDB has no server-custom quest relation |
 | `QuestDB.specialFlags` repeatable flag | KEEP applies even after a prior completion |
-| `ItemDB.questRewards()` | A reward alone does not mean the item is needed by a quest |
+| `ItemDB.questRewards(itemID)` | On miscellaneous/quest-class items only, shows **Reward from: [quest]** without inferring a required item use; regular equipment rewards remain silent |
 | `ItemDB.relatedQuests()` | Only a candidate list to verify exact fields; never proof by itself |
 | NPC/object/automatic quest starters | Tracked by live quest-log synchronization once accepted; no inventory item is implied |
 
@@ -38,3 +38,7 @@ QIT never deletes or vendors items. **SAFE TO DELETE** means no remaining consum
 - **Please test in the WoW Forever client before merging.**
 
 Standalone **QuestieDB** remains required. Full Questie is not.
+
+## Bloody Map — quest reward provenance
+
+**Bloody Map (item 271745)** is a miscellaneous reward from the Horde quest **Open the Maw (quest 95682)**. The Forever QuestieDB item record has `questRewards = {95682}`; it is not listed as a quest item objective. QIT now displays **Reward from: Open the Maw** and **QUEST REWARD · FUTURE USE UNKNOWN**. It does not incorrectly label the map NEEDED, KEEP, or SAFE TO DELETE from the reward association alone. Faction filtering remains in effect.
