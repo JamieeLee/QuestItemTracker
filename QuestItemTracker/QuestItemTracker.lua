@@ -1,15 +1,17 @@
--- Quest Item Tracker v0.3.1
--- Preserves QIT v0.2 quest history/live-quest matching and adds QuestieDB data lookup.
--- QuestieDB is an OPTIONAL data dependency. The full Questie tracker/map addon is NOT required.
+-- Quest Item Tracker v0.4.0
+-- Automatic per-character quest sync + QuestieDB item lifecycle lookup.
+-- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
 local ADDON = ...
 QuestItemTrackerDB = QuestItemTrackerDB or {}
 
 local DB = QuestItemTrackerDB
-DB.version = 3
-DB.quests = DB.quests or {}
+DB.version = 4
+DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login for this character.
 DB.events = DB.events or {}
 DB.items = DB.items or {}
+DB.characters = DB.characters or {}
+local CHARACTER_DATA
 
 local MAX_EVENTS = 500
 local MAX_HISTORY_LINES = 35
@@ -22,6 +24,7 @@ local dbIndexProcessed = 0
 local dbIndexTotal = 0
 local dbIndexFrame
 local tooltipHooked = false
+local tooltipErrorReported = false
 
 local function Print(message)
     if DEFAULT_CHAT_FRAME then
@@ -39,6 +42,45 @@ end
 local function Now()
     if type(date) == "function" then return date("%Y-%m-%d %H:%M:%S") end
     return tostring(time and time() or 0)
+end
+
+local function InitializeCharacterData()
+    local playerName = UnitName and UnitName("player") or nil
+    local realmName = GetRealmName and GetRealmName() or nil
+    if not playerName or playerName == "" then playerName = "UnknownCharacter" end
+    if not realmName or realmName == "" then realmName = "UnknownRealm" end
+
+    local key = realmName .. "::" .. playerName
+    local character = DB.characters[key]
+    if type(character) ~= "table" then
+        character = { quests = {}, events = {}, items = {} }
+        DB.characters[key] = character
+    end
+
+    character.quests = character.quests or {}
+    character.events = character.events or {}
+    character.items = character.items or {}
+
+    -- Preserve data created by v0.3.x. The old SavedVariables layout was shared,
+    -- so migrate it once to the first character that loads the new version.
+    if not DB.legacyCharacterDataMigrated then
+        for id, record in pairs(DB.quests) do
+            if character.quests[id] == nil then character.quests[id] = record end
+        end
+        for index, event in ipairs(DB.events) do
+            character.events[#character.events + 1] = event
+        end
+        for id, item in pairs(DB.items) do
+            if character.items[id] == nil then character.items[id] = item end
+        end
+        DB.legacyCharacterDataMigrated = true
+    end
+
+    CHARACTER_DATA = character
+    DB.activeCharacterKey = key
+    DB.quests = character.quests
+    DB.events = character.events
+    DB.items = character.items
 end
 
 local function AddEvent(kind, questID, title, extra)
@@ -159,10 +201,10 @@ local function SyncActiveQuestLog()
         record.importedFromQuestLog = true
         DB.quests[id] = record
     end
-    return count
+    return count, active
 end
 
-local function ImportCompletedQuestList()
+local function ImportCompletedQuestList(activeMap)
     local completed = SafeCall(C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs)
     if type(completed) ~= "table" then
         return 0, 0, false
@@ -182,22 +224,44 @@ local function ImportCompletedQuestList()
             record.importedCompleted = true
             record.completionDateUnknown = not record.completedAt
             record.firstSeen = record.firstSeen or "Imported from completed quest list (original date unavailable)"
-            if record.status ~= "active" then
-                record.status = "completed"
-            end
+            -- A repeatable quest can be both in the completed history and active now.
+            if not (activeMap and activeMap[id]) then record.status = "completed" end
             DB.quests[id] = record
         end
     end
 
-    DB.completedQuestImportAt = Now()
-    DB.completedQuestImportCount = total
+    CHARACTER_DATA.completedQuestImportAt = Now()
+    CHARACTER_DATA.completedQuestImportCount = total
     return total, newlyImported, true
 end
 
-local function SyncQuestHistory()
-    local activeCount = SyncActiveQuestLog()
-    local completedCount = ImportCompletedQuestList()
-    return activeCount, completedCount
+local function ReconcileMissingActiveQuests(activeMap)
+    -- Catch a quest removal that happened while the addon was reloading or offline.
+    -- Never invent a completion: only the completed-ID snapshot can do that.
+    for id, record in pairs(DB.quests) do
+        if record.status == "active" and not activeMap[id] then
+            if IsQuestCompleted(id) then
+                record.status = "completed"
+                record.completedAt = record.completedAt or nil
+                record.importedCompleted = true
+                record.completionDateUnknown = not record.completedAt
+            else
+                record.status = "abandoned"
+                record.abandonedAt = record.abandonedAt or "Status reconciled from current quest log"
+            end
+        end
+    end
+end
+
+local function SyncQuestHistory(importCompleted)
+    if not CHARACTER_DATA then return 0, 0 end
+    local activeCount, activeMap = SyncActiveQuestLog()
+    if importCompleted then
+        local completedCount, newlyImported, supported = ImportCompletedQuestList(activeMap)
+        if supported then ReconcileMissingActiveQuests(activeMap) end
+        return activeCount, completedCount, newlyImported, supported
+    end
+    return activeCount, CHARACTER_DATA.completedQuestImportCount or 0, 0, nil
 end
 
 local function GetItemIDFromLink(link)
@@ -214,22 +278,50 @@ local function GetItemName(itemID, tooltipName)
     return name or ("Item " .. tostring(itemID))
 end
 
-local function CountBags(itemID)
+local function IsBankOpen()
+    if BankFrame and type(BankFrame.IsShown) == "function" then
+        return BankFrame:IsShown()
+    end
+    return false
+end
+
+local function CountItemInContainer(itemID, bagID)
+    if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function"
+        or type(C_Container.GetContainerItemID) ~= "function" then
+        return 0
+    end
     local total = 0
-    if C_Container and type(C_Container.GetContainerNumSlots) == "function"
-        and type(C_Container.GetContainerItemID) == "function" then
-        for bag = 0, (NUM_BAG_SLOTS or 4) do
-            local slots = SafeCall(C_Container.GetContainerNumSlots, bag) or 0
-            for slot = 1, slots do
-                local slotID = SafeCall(C_Container.GetContainerItemID, bag, slot)
-                if tonumber(slotID) == tonumber(itemID) then
-                    local info = SafeCall(C_Container.GetContainerItemInfo, bag, slot)
-                    total = total + (info and tonumber(info.stackCount) or 1)
-                end
-            end
+    local slots = SafeCall(C_Container.GetContainerNumSlots, bagID) or 0
+    for slot = 1, slots do
+        local slotItemID = SafeCall(C_Container.GetContainerItemID, bagID, slot)
+        if tonumber(slotItemID) == tonumber(itemID) then
+            local info = SafeCall(C_Container.GetContainerItemInfo, bagID, slot)
+            total = total + (info and tonumber(info.stackCount) or 1)
         end
     end
     return total
+end
+
+local function CountItemInventory(itemID)
+    local bags, bank = 0, 0
+    if not C_Container then return bags, bank end
+
+    for bag = 0, (NUM_BAG_SLOTS or 4) do
+        bags = bags + CountItemInContainer(itemID, bag)
+    end
+
+    -- The personal bank is only readable while the bank window is open.
+    -- Classic/Forever uses container -1 for the main bank and bag IDs after
+    -- the player's normal bags for purchased bank bags.
+    if IsBankOpen() then
+        bank = bank + CountItemInContainer(itemID, BANK_CONTAINER or -1)
+        local firstBankBag = (NUM_BAG_SLOTS or 4) + 1
+        local bankBagCount = NUM_BANKBAGSLOTS or 7
+        for bag = firstBankBag, firstBankBag + bankBagCount - 1 do
+            bank = bank + CountItemInContainer(itemID, bag)
+        end
+    end
+    return bags, bank
 end
 
 local function AddAssociation(matches, questID, source, required)
@@ -323,7 +415,7 @@ local function BuildQuestItemIndex()
                 local requiredSources = SafeCall(QuestDB.requiredSourceItems, questID)
                 if type(requiredSources) == "table" then
                     for _, itemID in ipairs(requiredSources) do
-                        IndexQuestItem(itemID, questID, "database source item")
+                        IndexQuestItem(itemID, questID, "database source item", 1)
                     end
                 end
             end
@@ -337,36 +429,14 @@ local function BuildQuestItemIndex()
             self:Hide()
             dbIndexRunning = false
             dbIndexReady = true
-            Print("QuestieDB item index ready (" .. dbIndexProcessed .. " quests scanned).")
+            -- Index is ready; no player action or chat notification is needed.
         end
     end)
 end
 
-local function QuestieDBItemRelations(itemID, matches)
-    if type(ItemDB) ~= "table" then return end
-    if type(ItemDB.relatedQuests) == "function" then
-        local related = SafeCall(ItemDB.relatedQuests, itemID)
-        if type(related) == "table" then
-            for _, questID in ipairs(related) do
-                AddAssociation(matches, questID, "database related quest")
-            end
-        end
-    end
-    if type(ItemDB.startQuest) == "function" then
-        local start = SafeCall(ItemDB.startQuest, itemID)
-        if type(start) == "number" then
-            AddAssociation(matches, start, "starts quest")
-        elseif type(start) == "table" then
-            for _, questID in ipairs(start) do AddAssociation(matches, questID, "starts quest") end
-        end
-    end
-    if type(ItemDB.questRewards) == "function" then
-        local rewards = SafeCall(ItemDB.questRewards, itemID)
-        if type(rewards) == "table" then
-            for _, questID in ipairs(rewards) do AddAssociation(matches, questID, "quest reward") end
-        end
-    end
-end
+-- Item membership comes exclusively from QuestDB item objectives and requiredSourceItems.
+-- This intentionally excludes generic related-quest and quest-reward links: those do not
+-- prove that the player must keep or turn in the item.
 
 local function NativeBagQuestInfo(itemID, matches)
     if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function"
@@ -393,23 +463,21 @@ local function ActiveObjectiveMatches(itemName, active, matches)
     if not lowerName or lowerName == "" then return end
 
     for questID, quest in pairs(active) do
-        for _, objective in ipairs(quest.objectives or {}) do
-            local text = objective.text or ""
-            local lowerText = string.lower(text)
-            if objective.type == "item" and lowerText ~= ""
-                and (string.find(lowerText, lowerName, 1, true)
-                    or string.find(lowerName, lowerText, 1, true)) then
-                local entry = matches[questID]
-                if not entry then
-                    entry = { questID = questID, sources = {}, required = nil }
-                    matches[questID] = entry
+        local knownEntry = matches[questID]
+        if knownEntry then
+            for _, objective in ipairs(quest.objectives or {}) do
+                local text = objective.text or ""
+                local lowerText = string.lower(text)
+                if objective.type == "item" and lowerText ~= ""
+                    and (string.find(lowerText, lowerName, 1, true)
+                        or string.find(lowerName, lowerText, 1, true)) then
+                    knownEntry.sources["active quest objective"] = true
+                    knownEntry.detail = text
+                    knownEntry.fulfilled = tonumber(objective.numFulfilled)
+                    knownEntry.required = tonumber(objective.numRequired) or knownEntry.required
+                    knownEntry.finished = objective.finished
+                    break
                 end
-                entry.sources["active quest objective"] = true
-                entry.detail = text
-                entry.fulfilled = tonumber(objective.numFulfilled)
-                entry.required = tonumber(objective.numRequired) or entry.required
-                entry.finished = objective.finished
-                break
             end
         end
     end
@@ -439,22 +507,31 @@ end
 local function GetQuestStatus(questID, matchesEntry, activeMap)
     local active = activeMap[questID]
     local record = DB.quests[questID]
+    local sources = matchesEntry and matchesEntry.sources or {}
+    local sourceOnly = sources["database source item"] and not sources["database objective"]
+    if active and sourceOnly then
+        if IsRepeatableQuest(active) then
+            return "REPEATABLE — KEEP FOR NEXT TIME", "|cffffcc66"
+        end
+        return "QUEST ACCEPTED · START ITEM NO LONGER NEEDED", "|cff66ccff"
+    end
     if active then
         if active.isComplete then return "READY TO TURN IN", "|cffffd45c" end
-        if IsTrivialQuest(active) then return "GREY / TRIVIAL · ACTIVE", "|ffc0c0c0" end
-        if IsRepeatableQuest(active) then return "ACTIVE · REPEATABLE", "|cff33ff66" end
-        return "ACTIVE", "|cff33ff66"
+        if IsRepeatableQuest(active) then return "NEEDED · REPEATABLE", "|cff33ff66" end
+        return "NEEDED NOW", "|cff33ff66"
+    end
+    if IsQuestRepeatableByID(questID) then
+        if IsQuestCompleted(questID) then return "REPEATABLE · COMPLETED BEFORE", "|cffffcc66" end
+        return "REPEATABLE QUEST", "|cffffcc66"
     end
     if IsQuestCompleted(questID) or (record and record.status == "completed") then
-        if IsQuestRepeatableByID(questID) then return "COMPLETED · REPEATABLE", "|cff66ccff" end
         return "COMPLETED", "|cff66ccff"
     end
-    if record and record.status == "abandoned" then return "PREVIOUSLY ABANDONED", "|cffffaa55" end
-
+    if record and record.status == "abandoned" then return "FUTURE USE · ABANDONED", "|cffffcc66" end
     local level = GetQuestLevel(questID)
     local trivial = IsTrivialQuest({ questID = questID, level = level })
-    if trivial then return "GREY / TRIVIAL", "|ffc0c0c0" end
-    return "NOT IN QUEST LOG", "|cffffcc66"
+    if trivial then return "FUTURE USE · GREY QUEST", "|ffc0c0c0" end
+    return "FUTURE QUEST", "|cffffcc66"
 end
 
 local function QuestDBName(questID)
@@ -490,69 +567,44 @@ local function RecordItem(itemID, itemName, matches)
 end
 
 local function AssessItemRetention(matches, activeMap)
-    local hasKnownConsumer = false
-    local hasUncertainAssociation = false
-    local hasOutstandingUse = false
-    local completedNonRepeatableUses = 0
-    local repeatableUse = false
+    local hasUse = false
+    local hasActiveUse = false
+    local hasFutureUse = false
+    local hasRepeatableUse = false
+    local allCompleted = true
 
     for questID, entry in pairs(matches) do
+        hasUse = true
+        local active = activeMap[questID]
         local sources = entry.sources or {}
-        local isRewardOnly = sources["quest reward"]
-            and not (sources["database item objective"] or sources["active quest objective"]
-                or sources["database source item"] or sources["starts quest"]
-                or sources["native bag metadata"])
+        local sourceOnly = sources["database source item"] and not sources["database objective"]
+        local completed = IsQuestCompleted(questID)
+            or (DB.quests[questID] and DB.quests[questID].status == "completed")
+        local repeatable = IsQuestRepeatableByID(questID)
+            or (active and IsRepeatableQuest(active))
+        local stillNeededNow = active and not sourceOnly
 
-        if not isRewardOnly then
-            local isObjective = sources["database item objective"] or sources["active quest objective"]
-            local isSource = sources["database source item"] or sources["starts quest"]
-            local isNativeQuestItem = sources["native bag metadata"]
-            local isRelatedOnly = sources["database related quest"]
-                and not isObjective and not isSource and not isNativeQuestItem
-
-            if isObjective or isSource then
-                hasKnownConsumer = true
-                local active = activeMap[questID]
-                local completed = IsQuestCompleted(questID)
-                local repeatable = IsQuestRepeatableByID(questID)
-                    or (active and IsRepeatableQuest(active))
-
-                if active then
-                    hasOutstandingUse = true
-                elseif repeatable then
-                    repeatableUse = true
-                    hasOutstandingUse = true
-                elseif completed then
-                    completedNonRepeatableUses = completedNonRepeatableUses + 1
-                else
-                    -- The quest is not active or completed. It may be a future
-                    -- use, even if prerequisites currently hide it.
-                    hasOutstandingUse = true
-                end
-            elseif isNativeQuestItem or isRelatedOnly then
-                -- The relation is real enough to show, but not specific enough
-                -- to prove that this item is consumed by that quest.
-                hasUncertainAssociation = true
-            end
+        if stillNeededNow then hasActiveUse = true end
+        if repeatable then hasRepeatableUse = true end
+        if (not completed and not (active and sourceOnly)) or repeatable or stillNeededNow then
+            allCompleted = false
+            if not active and not repeatable then hasFutureUse = true end
         end
     end
 
-    if hasOutstandingUse then
-        if repeatableUse then
-            return "KEEP — repeatable or outstanding quest use", "|cff33dd77"
-        end
-        return "KEEP — an active or future quest may need this", "|cff33dd77"
+    if hasActiveUse then
+        return "NEEDED — a current quest uses this item", "|cff33dd77", "needed"
     end
-    if hasKnownConsumer and completedNonRepeatableUses > 0 and not hasUncertainAssociation then
-        return "LIKELY SAFE TO DELETE — all known non-repeatable uses are completed", "|cff88ccff"
+    if hasRepeatableUse then
+        return "KEEP — a repeatable quest can use this item", "|cffffcc66", "keep"
     end
-    if hasUncertainAssociation then
-        return "REVIEW — database association needs confirmation", "|cffffcc66"
+    if hasFutureUse then
+        return "KEEP — another quest can use this item", "|cffffcc66", "keep"
     end
-    if completedNonRepeatableUses > 0 then
-        return "REVIEW — completed quest use found, but other uses are uncertain", "|cffffcc66"
+    if hasUse and allCompleted then
+        return "SAFE TO DELETE — all known quests that use this item are completed", "|cff88ccff", "delete"
     end
-    return "REVIEW — no confirmed consuming quest use found", "|cffffcc66"
+    return nil, nil, "unknown"
 end
 
 local function AddTooltipLines(tooltip)
@@ -563,39 +615,26 @@ local function AddTooltipLines(tooltip)
     local itemID = GetItemIDFromLink(itemLink)
     if not itemID then return end
 
+    -- Do not decorate ordinary items. A positive QuestieDB item-objective/source
+    -- association is required before QIT adds anything to the tooltip.
+    if not dbIndexReady then return end
+    local indexed = itemQuestIndex[itemID]
+    if type(indexed) ~= "table" or not next(indexed) then return end
+
     local itemNameResolved = GetItemName(itemID, itemName)
     local activeMap = GetActiveQuestMap()
     local matches = {}
 
-    -- Keep all the original v0.2 detection paths intact.
-    NativeBagQuestInfo(itemID, matches)
+    for questID, entry in pairs(indexed) do
+        AddAssociation(matches, questID, "database item use", entry.required)
+        local target = matches[questID]
+        target.sources = entry.sources or target.sources
+    end
+
     ActiveObjectiveMatches(itemNameResolved, activeMap, matches)
 
-    -- Add the wider database view when QuestieDB is installed.
-    local dbReady = QuestieDBReady()
-    if dbReady then
-        local indexed = itemQuestIndex[itemID]
-        if type(indexed) == "table" then
-            for questID, entry in pairs(indexed) do
-                AddAssociation(matches, questID, "database item objective", entry.required)
-                local target = matches[questID]
-                if entry.sources then
-                    for source in pairs(entry.sources) do target.sources[source] = true end
-                end
-            end
-        end
-        QuestieDBItemRelations(itemID, matches)
-    end
-
-    -- Fill missing objective counts even when the quest was found through
-    -- ItemDB.relatedQuests rather than the reverse objective index.
-    for questID, entry in pairs(matches) do
-        if not entry.required then
-            entry.required = GetObjectiveCountFromDB(questID, itemID)
-        end
-    end
-
-    local have = CountBags(itemID)
+    local bags, bank = CountItemInventory(itemID)
+    local totalHave = bags + bank
     local ids = {}
     for questID in pairs(matches) do ids[#ids + 1] = questID end
     table.sort(ids, function(a, b)
@@ -606,57 +645,47 @@ local function AddTooltipLines(tooltip)
 
     tooltip:AddLine(" ")
     tooltip:AddLine("|cff66ccffQuest Item Tracker|r")
-    tooltip:AddLine("Item ID: " .. itemID .. "  |  In bags: " .. tostring(have), 0.75, 0.75, 0.75)
+    tooltip:AddLine("Quest item · Item ID: " .. itemID, 0.75, 0.75, 0.75)
+    tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
 
     local recommendation, recommendationColor = AssessItemRetention(matches, activeMap)
-    tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
+    if recommendation then
+        tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
+    end
 
-    if #ids == 0 then
-        tooltip:AddLine("No quest association identified.", 1, 0.7, 0.2)
-        tooltip:AddLine("This is not proof the item is unused; database coverage may be incomplete.", 0.7, 0.7, 0.7, true)
-        if dbIndexRunning then
-            tooltip:AddLine("Quest database indexing: " .. dbIndexProcessed .. " / " .. dbIndexTotal, 0.7, 0.7, 0.7)
-        elseif not dbReady then
-            tooltip:AddLine("QuestieDB not loaded; showing live game detection only.", 0.7, 0.7, 0.7, true)
+    local activeCount, futureCount, completedCount = 0, 0, 0
+    for _, questID in ipairs(ids) do
+        local entry = matches[questID]
+        local active = activeMap[questID]
+        local questName = (active and active.title) or QuestDBName(questID)
+        local status, color = GetQuestStatus(questID, entry, activeMap)
+        local level = GetQuestLevel(questID, active)
+        local levelText = level and ("Level " .. level) or "Level unknown"
+
+        local sources = entry.sources or {}
+        local sourceOnly = sources["database source item"] and not sources["database objective"]
+        if active and not sourceOnly then
+            activeCount = activeCount + 1
+        elseif IsQuestRepeatableByID(questID) or not IsQuestCompleted(questID) then
+            futureCount = futureCount + 1
+        else
+            completedCount = completedCount + 1
         end
-    else
-        tooltip:AddLine("Quest associations:", 0.3, 1, 0.3)
-        for _, questID in ipairs(ids) do
-            local entry = matches[questID]
-            local active = activeMap[questID]
-            local questName = (active and active.title) or QuestDBName(questID)
-            local status, color = GetQuestStatus(questID, entry, activeMap)
-            local level = GetQuestLevel(questID, active)
-            local levelText = level and ("Level " .. level) or "Level unknown"
 
-            tooltip:AddLine(color .. questName .. "|r  (" .. levelText .. ")")
-            tooltip:AddLine("  " .. status .. "  |  Quest ID: " .. questID, 0.78, 0.78, 0.78)
+        tooltip:AddLine(color .. questName .. "|r  (" .. levelText .. ")")
+        tooltip:AddLine("  " .. status .. "  |  Quest ID: " .. questID, 0.78, 0.78, 0.78)
 
-            if entry.fulfilled ~= nil and entry.required ~= nil then
-                tooltip:AddLine("  Have " .. entry.fulfilled .. " / Need " .. entry.required
-                    .. "  |  In bags: " .. have, 0.75, 0.9, 0.75)
-            elseif entry.required and entry.required > 0 then
-                tooltip:AddLine("  Have " .. have .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
-            elseif entry.detail then
-                tooltip:AddLine("  " .. entry.detail, 0.7, 0.7, 0.7, true)
-            end
-
-            local sourceLabels = {}
-            if entry.sources["native bag metadata"] then sourceLabels[#sourceLabels + 1] = "game item link" end
-            if entry.sources["active quest objective"] then sourceLabels[#sourceLabels + 1] = "active objective" end
-            if entry.sources["database item objective"] then sourceLabels[#sourceLabels + 1] = "database objective" end
-            if entry.sources["database source item"] then sourceLabels[#sourceLabels + 1] = "quest start requirement" end
-            if entry.sources["database related quest"] then sourceLabels[#sourceLabels + 1] = "related quest" end
-            if entry.sources["starts quest"] then sourceLabels[#sourceLabels + 1] = "starts quest" end
-            if entry.sources["quest reward"] then sourceLabels[#sourceLabels + 1] = "quest reward" end
-            if #sourceLabels > 0 then
-                tooltip:AddLine("  Match: " .. table.concat(sourceLabels, ", "), 0.62, 0.62, 0.62, true)
-            end
+        if entry.required and entry.required > 0 then
+            tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
+        elseif entry.detail then
+            tooltip:AddLine("  " .. entry.detail, 0.7, 0.7, 0.7, true)
         end
     end
 
-    if dbIndexRunning then
-        tooltip:AddLine("Quest database indexing: " .. dbIndexProcessed .. " / " .. dbIndexTotal, 0.65, 0.75, 0.9)
+    if activeCount == 0 and futureCount > 0 then
+        tooltip:AddLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
+    elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
+        tooltip:AddLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
     end
     tooltip:Show()
 end
@@ -671,7 +700,10 @@ local function InstallTooltipHook()
             Enum.TooltipDataType.Item,
             function(tooltip)
                 local success, err = pcall(AddTooltipLines, tooltip)
-                if not success then Print("Tooltip error: " .. tostring(err)) end
+                if not success and not tooltipErrorReported then
+                    tooltipErrorReported = true
+                    Print("Tooltip error (first occurrence): " .. tostring(err))
+                end
             end)
         if ok then
             tooltipHooked = true
@@ -683,12 +715,18 @@ local function InstallTooltipHook()
     if not GameTooltip or type(GameTooltip.HookScript) ~= "function" then return false end
     GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
         local ok, err = pcall(AddTooltipLines, tooltip)
-        if not ok then Print("Tooltip error: " .. tostring(err)) end
+        if not ok and not tooltipErrorReported then
+            tooltipErrorReported = true
+            Print("Tooltip error (first occurrence): " .. tostring(err))
+        end
     end)
     if ItemRefTooltip and type(ItemRefTooltip.HookScript) == "function" then
         ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip)
             local ok, err = pcall(AddTooltipLines, tooltip)
-            if not ok then Print("ItemRef tooltip error: " .. tostring(err)) end
+            if not ok and not tooltipErrorReported then
+                tooltipErrorReported = true
+                Print("ItemRef tooltip error (first occurrence): " .. tostring(err))
+            end
         end)
     end
     tooltipHooked = true
@@ -732,11 +770,11 @@ local function ScanBags()
 end
 
 local function ShowHistory(filter)
-    SyncQuestHistory()
+    SyncQuestHistory(true)
     local shown = 0
     Print("Quest history (local events plus imported completed-quest snapshot):")
-    Print("Imported completed quest records: " .. tostring(DB.completedQuestImportCount or 0)
-        .. " | Last snapshot: " .. tostring(DB.completedQuestImportAt or "not imported"))
+    Print("Imported completed quest records: " .. tostring(CHARACTER_DATA and CHARACTER_DATA.completedQuestImportCount or 0)
+        .. " | Last snapshot: " .. tostring(CHARACTER_DATA and CHARACTER_DATA.completedQuestImportAt or "not imported"))
     for _, event in ipairs(DB.events or {}) do
         local haystack = string.lower(tostring(event.kind or "") .. " " .. tostring(event.title or ""))
         if not filter or string.find(haystack, filter, 1, true) then
@@ -754,7 +792,7 @@ local function ShowHistory(filter)
 end
 
 local function ListCompletedQuests(filter)
-    SyncQuestHistory()
+    SyncQuestHistory(true)
     local rows = {}
     local needle = filter and string.lower(filter) or nil
 
@@ -776,7 +814,7 @@ local function ListCompletedQuests(filter)
         return string.lower(a.title) < string.lower(b.title)
     end)
 
-    Print("Completed quests known to QIT: " .. #rows)
+    Print("Completed quests for this character: " .. #rows)
     for _, row in ipairs(rows) do
         local when = row.completedAt or (row.imported and "date unknown (imported)" or "date unknown")
         Print(string.format("%s (ID: %s) — %s", row.title, tostring(row.id), when))
@@ -785,7 +823,7 @@ local function ListCompletedQuests(filter)
 end
 
 local function ListQuests()
-    SyncQuestHistory()
+    SyncQuestHistory(false)
     local active = GetActiveQuestMap()
     local count = 0
     for id, quest in pairs(active) do
@@ -801,7 +839,7 @@ local function ListQuests()
 end
 
 local function HandleQuestAccepted(a, b)
-    local questID = tonumber(b) or tonumber(a)
+    local questID = tonumber(a) or tonumber(b)
     if not questID then return end
     local title = QuestTitle(questID)
     local record = DB.quests[questID] or {}
@@ -849,7 +887,9 @@ local function ApiDiagnostics()
     Print("Interface: " .. tostring(select(4, GetBuildInfo())))
     Print("Active quest log API: " .. tostring(C_QuestLog and type(C_QuestLog.GetInfo) == "function"))
     Print("Live objective API: " .. tostring(C_QuestLog and type(C_QuestLog.GetQuestObjectives) == "function"))
-    Print("Native bag quest metadata: " .. tostring(C_Container and type(C_Container.GetContainerItemQuestInfo) == "function"))
+    Print("Container item APIs: " .. tostring(C_Container and type(C_Container.GetContainerItemID) == "function"))
+    Print("Bank open: " .. tostring(IsBankOpen()))
+    Print("Character scope: " .. tostring(DB.activeCharacterKey or "not initialized"))
     Print("GameTooltip HookScript: " .. tostring(GameTooltip and type(GameTooltip.HookScript) == "function"))
     Print("QuestieDB available: " .. tostring(dbReady) .. (dbReason and (" (" .. tostring(dbReason) .. ")") or ""))
     Print("QuestieDB item index: " .. (dbIndexReady and "READY" or (dbIndexRunning and "BUILDING" or "NOT STARTED")))
@@ -868,10 +908,9 @@ SlashCmdList.QUESTITEMTRACKER = function(message)
     elseif cmd == "completed" then
         ListCompletedQuests(arg ~= "" and arg or nil)
     elseif cmd == "import" then
-        local activeCount = SyncActiveQuestLog()
-        local completedCount, newlyImported, supported = ImportCompletedQuestList()
+        local activeCount, completedCount, newlyImported, supported = SyncQuestHistory(true)
         if supported then
-            Print("Character snapshot imported.")
+            Print("Character snapshot refreshed.")
             Print("Active quests found: " .. activeCount)
             Print("Completed quests found: " .. completedCount)
             Print("New completed history records imported: " .. newlyImported)
@@ -892,7 +931,7 @@ SlashCmdList.QUESTITEMTRACKER = function(message)
     elseif cmd == "apis" then
         ApiDiagnostics()
     else
-        Print("Commands: /qit import | quests | completed [word] | history [word] | scan | items | db")
+        Print("Commands: /qit quests | completed [word] | history [word] | scan | items | db")
     end
 end
 
@@ -904,33 +943,39 @@ frame:RegisterEvent("QUEST_TURNED_IN")
 frame:RegisterEvent("QUEST_REMOVED")
 frame:RegisterEvent("QUEST_LOG_UPDATE")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")
+frame:RegisterEvent("BANKFRAME_OPENED")
+frame:RegisterEvent("BANKFRAME_CLOSED")
+frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
+frame:RegisterEvent("BANK_BAG_SLOT_FLAGS_UPDATED")
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_LOGIN" then
-        SyncQuestHistory()
-        local hooked = InstallTooltipHook()
-        Print("Loaded v0.3.3. Live quest tracking + completed history import + QuestieDB lookup.")
-        Print("Tooltip hook installed: " .. tostring(hooked))
-        if QuestieDBReady() then
-            BuildQuestItemIndex()
-        else
-            Print("QuestieDB is optional; native live-quest matching remains active.")
-        end
-        Print("Commands: /qit import | quests | completed | history | scan | items | db")
+        InitializeCharacterData()
+        SyncQuestHistory(true)
+        InstallTooltipHook()
+        if QuestieDBReady() then BuildQuestItemIndex() end
+        -- No user setup/import command is required. The current quest log and
+        -- all completed quest IDs are synchronized automatically at login.
     elseif event == "ADDON_LOADED" then
         local addonName = ...
         if addonName == "QuestieDB" then
             InstallTooltipHook()
+            if CHARACTER_DATA then SyncQuestHistory(true) end
             BuildQuestItemIndex()
         end
     elseif event == "QUEST_ACCEPTED" then
         HandleQuestAccepted(...)
+        SyncQuestHistory(false)
     elseif event == "QUEST_TURNED_IN" then
         HandleQuestTurnedIn(...)
+        SyncQuestHistory(true)
     elseif event == "QUEST_REMOVED" then
         HandleQuestRemoved(...)
+        SyncQuestHistory(true)
     elseif event == "QUEST_LOG_UPDATE" then
-        SyncQuestHistory()
-    elseif event == "BAG_UPDATE_DELAYED" then
-        -- Item observations are recorded on hover or /qit scan.
+        SyncQuestHistory(false)
+    elseif event == "BAG_UPDATE_DELAYED" or event == "BANKFRAME_OPENED"
+        or event == "BANKFRAME_CLOSED" or event == "PLAYERBANKSLOTS_CHANGED"
+        or event == "BANK_BAG_SLOT_FLAGS_UPDATED" then
+        -- Counts are read live when the item tooltip is opened/refreshed.
     end
 end)

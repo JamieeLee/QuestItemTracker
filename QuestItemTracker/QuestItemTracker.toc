@@ -1,9 +1,9 @@
 ## Interface: 16001
 ## Title: Quest Item Tracker
-## Notes: Live quests, completed quest import, quest history, and item-to-quest lookup.
+## Notes: Automatically tracks quest-item uses and tells you when to keep or delete leftovers.
 ## Author: JamieeLee
-## Version: 0.3.4
-## OptionalDeps: QuestieDB
+## Version: 0.4.0
+## Dependencies: QuestieDB
 ## SavedVariables: QuestItemTrackerDB
 
 QuestItemTracker.lua
