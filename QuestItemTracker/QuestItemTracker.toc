@@ -2,7 +2,7 @@
 ## Title: Quest Item Tracker
 ## Notes: Requires standalone QuestieDB (enable both addons). Automatically tracks which quest items to keep or delete.
 ## Author: JamieeLee
-## Version: 0.4.0
+## Version: 0.4.1
 ## Dependencies: QuestieDB
 ## SavedVariables: QuestItemTrackerDB
 

@@ -5,12 +5,12 @@ A lightweight World of Warcraft Forever addon that answers one question when you
 ## Current development
 
 - **Last known-good baseline:** v0.3.4 (`baseline/v0.3.4`)
-- **Current proposal:** v0.4.0 (`feature/automatic-quest-sync`)
+- **Current proposal:** v0.4.1 (`feature/automatic-quest-sync`)
 - **Game interface:** 16001
 - **License:** GNU GPL-3.0
 - **Required dependency:** standalone QuestieDB for Forever; enable both addons in WoW's AddOns list. The full Questie tracker is not required.
 
-## v0.4.0 proposal
+## v0.4.1 proposal
 
 - Automatically imports the current quest log and completed quest IDs at login.
 - Automatically refreshes quest state as quests are accepted, completed, abandoned, or the quest log changes.
@@ -22,4 +22,7 @@ A lightweight World of Warcraft Forever addon that answers one question when you
 
 See [`QuestItemTracker/README.txt`](QuestItemTracker/README.txt) for installation, dependency, tooltip behavior, limitations, and developer diagnostics.
 
-The v0.4.0 branch is a proposal for testing. `main` remains the v0.3.4 baseline until the pull request is reviewed and accepted.
+The v0.4.1 branch is a proposal for testing. `main` remains the v0.3.4 baseline until the pull request is reviewed and accepted.
+## v0.4.1 tooltip compatibility update
+
+Supports typed tooltip item data when a custom bag UI does not provide `GetItem()`, and registers legacy callbacks and secure item setters as supplementary paths. QuestieDB candidate relations may provide verified item uses before the incremental index is finished, but deletion guidance waits for full indexing.

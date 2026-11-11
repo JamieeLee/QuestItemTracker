@@ -1,4 +1,4 @@
-Quest Item Tracker v0.4.0 — WoW: Forever
+Quest Item Tracker v0.4.1 — WoW: Forever
 
 PURPOSE
 Hover a quest item in your bags or personal bank and quickly see:
@@ -40,7 +40,7 @@ TOOLTIP BEHAVIOR
 IMPORTANT SAFETY NOTES
 - QIT never deletes, vendors, or moves items.
 - SAFE TO DELETE means all quest uses represented in the installed QuestieDB data are completed and no repeatable use remains. It cannot account for missing/server-specific data or unrelated non-quest item uses.
-- If the QuestieDB index is not ready yet, QIT does not show a premature status.
+- While the full QuestieDB index is building, verified item relations may appear early, but SAFE TO DELETE is withheld until all quest uses have been indexed.
 - Quest completion dates from before QIT was installed are not available; the game only exposes completed quest IDs. They are imported as completed without invented dates.
 - v0.3.x SavedVariables are migrated automatically into a per-character record on first login. Existing quest/item/history data is preserved. New character data is kept separately to avoid one character's completions affecting another.
 - The personal bank is only counted while it is open. Account bank storage is not included.
@@ -63,3 +63,13 @@ VERSION 0.4.0
 - Bag and open personal-bank item counts.
 - Removed broad related-quest/reward associations from keep/delete decisions.
 - Database indexing remains incremental and requires no player command.
+
+PATCH 0.4.1 — TOOLTIP COMPATIBILITY
+- Reads the item ID from typed tooltip data when GetItem() has no link.
+- Installs both supported tooltip callback styles where available, plus secure hooks
+  for conventional item/bag tooltip setters.
+- Avoids repeated QIT lines when the client fires multiple hooks for one item.
+- Uses verified direct QuestieDB item relations while the background index warms up.
+- Never marks an item safe to delete until the complete quest-item index exists.
+- Fixes QUEST_ACCEPTED argument handling (quest-log index versus quest ID).
+- Developers can inspect hook availability and database indexing via /qit db.

@@ -1,5 +1,5 @@
--- Quest Item Tracker v0.4.0
--- Automatic per-character quest sync + QuestieDB item lifecycle lookup.
+-- Quest Item Tracker v0.4.1
+-- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
 local ADDON = ...
@@ -25,6 +25,10 @@ local dbIndexTotal = 0
 local dbIndexFrame
 local tooltipHooked = false
 local tooltipErrorReported = false
+-- Modern data hooks and older client scripts can both run for one hover.
+-- Remember only tooltips actually decorated; OnHide/Cleared resets this state.
+local decoratedTooltips = setmetatable({}, { __mode = "k" })
+local hookStats = { typed = false, legacy = false, setters = 0 }
 
 local function Print(message)
     if DEFAULT_CHAT_FRAME then
@@ -434,6 +438,45 @@ local function BuildQuestItemIndex()
     end)
 end
 
+-- A fast, per-item lookup while the full reverse index is still warming up.
+-- ItemDB.relatedQuests provides *candidate* quest IDs only. Confirm each actual item
+-- objective or required source item against QuestDB before showing anything.
+-- Never use this partial set to declare an item safe to delete.
+local function LookupItemDuringIndex(itemID)
+    if not QuestieDBReady() or type(ItemDB) ~= "table"
+        or type(ItemDB.relatedQuests) ~= "function" then
+        return nil
+    end
+    local candidateIDs = SafeCall(ItemDB.relatedQuests, itemID)
+    if type(candidateIDs) ~= "table" then return nil end
+
+    local matches = {}
+    for _, rawQuestID in ipairs(candidateIDs) do
+        local questID = tonumber(rawQuestID)
+        if questID and questID > 0 then
+            local objectives = SafeCall(QuestDB.objectives, questID)
+            local itemObjectives = type(objectives) == "table" and objectives[3] or nil
+            if type(itemObjectives) == "table" then
+                for _, objective in ipairs(itemObjectives) do
+                    if type(objective) == "table" and tonumber(objective[1]) == itemID then
+                        AddAssociation(matches, questID, "database objective", tonumber(objective[3]))
+                    end
+                end
+            end
+            local sources = SafeCall(QuestDB.requiredSourceItems, questID)
+            if type(sources) == "table" then
+                for _, sourceID in ipairs(sources) do
+                    if tonumber(sourceID) == itemID then
+                        AddAssociation(matches, questID, "database source item", 1)
+                        break
+                    end
+                end
+            end
+        end
+    end
+    return next(matches) and matches or nil
+end
+
 -- Item membership comes exclusively from QuestDB item objectives and requiredSourceItems.
 -- This intentionally excludes generic related-quest and quest-reward links: those do not
 -- prove that the player must keep or turn in the item.
@@ -607,28 +650,65 @@ local function AssessItemRetention(matches, activeMap)
     return nil, nil, "unknown"
 end
 
-local function AddTooltipLines(tooltip)
-    if not tooltip or type(tooltip.GetItem) ~= "function" then return end
-    local itemName, itemLink = tooltip:GetItem()
-    if not itemLink then return end
+local function GetTooltipItem(tooltip, data, explicitItemID)
+    -- A bag setter supplies a trustworthy itemID even if the client did not
+    -- populate GetItem() yet. The typed item callback supplies data.id.
+    local explicit = tonumber(explicitItemID)
+    if explicit and explicit > 0 then return explicit, nil end
+    if type(data) == "table" then
+        local dataID = tonumber(data.id) or tonumber(data.itemID)
+        if dataID and dataID > 0 then return dataID, nil end
+        local linkID = GetItemIDFromLink(data.hyperlink or data.itemLink)
+        if linkID then return linkID, nil end
+    end
+    if tooltip and type(tooltip.GetItem) == "function" then
+        local name, link = SafeCall(tooltip.GetItem, tooltip)
+        local linkID = GetItemIDFromLink(link)
+        if linkID then return linkID, name end
+    end
+    if tooltip and type(tooltip.GetPrimaryTooltipData) == "function" then
+        local primary = SafeCall(tooltip.GetPrimaryTooltipData, tooltip)
+        if type(primary) == "table" then
+            local itemType = Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item
+            if not itemType or primary.type == itemType then
+                local dataID = tonumber(primary.id) or tonumber(primary.itemID)
+                if dataID and dataID > 0 then return dataID, nil end
+                local linkID = GetItemIDFromLink(primary.hyperlink or primary.itemLink)
+                if linkID then return linkID, nil end
+            end
+        end
+    end
+    return nil, nil
+end
 
-    local itemID = GetItemIDFromLink(itemLink)
-    if not itemID then return end
+local function AddTooltipLines(tooltip, data, explicitItemID)
+    if not tooltip or type(tooltip.AddLine) ~= "function" then return false end
+    local itemID, itemName = GetTooltipItem(tooltip, data, explicitItemID)
+    if not itemID then return false end
+    if decoratedTooltips[tooltip] == itemID then return true end
 
-    -- Do not decorate ordinary items. A positive QuestieDB item-objective/source
-    -- association is required before QIT adds anything to the tooltip.
-    if not dbIndexReady then return end
-    local indexed = itemQuestIndex[itemID]
-    if type(indexed) ~= "table" or not next(indexed) then return end
+    -- Don't decorate generic items. During indexing, only verified item
+    -- objectives/source items from ItemDB reverse relations are sufficient.
+    local indexed = dbIndexReady and itemQuestIndex[itemID] or nil
+    local partial = nil
+    if type(indexed) ~= "table" or not next(indexed) then
+        if dbIndexReady then return false end
+        partial = LookupItemDuringIndex(itemID)
+        if not partial then return false end
+    end
 
     local itemNameResolved = GetItemName(itemID, itemName)
     local activeMap = GetActiveQuestMap()
     local matches = {}
 
-    for questID, entry in pairs(indexed) do
-        AddAssociation(matches, questID, "database item use", entry.required)
-        local target = matches[questID]
-        target.sources = entry.sources or target.sources
+    if partial then
+        matches = partial
+    else
+        for questID, entry in pairs(indexed) do
+            AddAssociation(matches, questID, "database item use", entry.required)
+            local target = matches[questID]
+            target.sources = entry.sources or target.sources
+        end
     end
 
     ActiveObjectiveMatches(itemNameResolved, activeMap, matches)
@@ -642,6 +722,8 @@ local function AddTooltipLines(tooltip)
     end)
 
     RecordItem(itemID, itemNameResolved, matches)
+    -- Mark this tooltip before rendering: Show() may invoke tooltip hooks again.
+    decoratedTooltips[tooltip] = itemID
 
     tooltip:AddLine(" ")
     tooltip:AddLine("|cff66ccffQuest Item Tracker|r")
@@ -649,6 +731,11 @@ local function AddTooltipLines(tooltip)
     tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
 
     local recommendation, recommendationColor = AssessItemRetention(matches, activeMap)
+    -- Before the scan completes, this list can be incomplete: don't promise
+    -- the item is disposable or that no future use exists.
+    if partial and recommendation and string.find(recommendation, "SAFE TO DELETE", 1, true) then
+        recommendation = nil
+    end
     if recommendation then
         tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
     end
@@ -682,55 +769,99 @@ local function AddTooltipLines(tooltip)
         end
     end
 
-    if activeCount == 0 and futureCount > 0 then
+    if partial then
+        tooltip:AddLine("Checking remaining quests...", 0.7, 0.8, 1, true)
+    elseif activeCount == 0 and futureCount > 0 then
         tooltip:AddLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
     elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
         tooltip:AddLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
     end
-    tooltip:Show()
+    if type(tooltip.Show) == "function" then tooltip:Show() end
+    return true
+end
+
+local function RunTooltipHook(tooltip, data, explicitItemID)
+    local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
+    if not ok and not tooltipErrorReported then
+        tooltipErrorReported = true
+        Print("Tooltip error (first occurrence): " .. tostring(err))
+    end
+end
+
+local function HookTooltipFrame(tooltip)
+    if not tooltip then return false end
+    local hooked = false
+    if type(tooltip.HookScript) == "function" then
+        -- Both legacy and typed hooks can exist in Forever. Register BOTH:
+        -- some bag UI implementations use only one of the two mechanisms.
+        local ok = pcall(tooltip.HookScript, tooltip, "OnTooltipSetItem", function(self)
+            RunTooltipHook(self)
+        end)
+        if ok then hooked = true; hookStats.legacy = true end
+
+        pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
+            decoratedTooltips[self] = nil
+        end)
+        pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
+            decoratedTooltips[self] = nil
+        end)
+        ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
+            RunTooltipHook(self)
+        end)
+        if ok then hooked = true end
+    end
+
+    -- Certain inventory addons use setter methods without publishing a typed
+    -- tooltip item or a legacy item script. Securely hook the bag/item setters
+    -- to obtain the actual item ID even when tooltip:GetItem() is empty.
+    if type(hooksecurefunc) == "function" then
+        -- Custom bag UIs may reuse a visible tooltip and call ClearLines()
+        -- without hiding it or firing OnTooltipCleared.
+        if type(tooltip.ClearLines) == "function" then
+            pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
+                decoratedTooltips[self] = nil
+            end)
+        end
+        if type(tooltip.SetBagItem) == "function" then
+            local ok = pcall(hooksecurefunc, tooltip, "SetBagItem", function(self, bag, slot)
+                local id = SafeCall(C_Container and C_Container.GetContainerItemID, bag, slot)
+                RunTooltipHook(self, nil, id)
+            end)
+            if ok then hooked = true; hookStats.setters = hookStats.setters + 1 end
+        end
+        if type(tooltip.SetHyperlink) == "function" then
+            local ok = pcall(hooksecurefunc, tooltip, "SetHyperlink", function(self, link)
+                RunTooltipHook(self, nil, GetItemIDFromLink(link))
+            end)
+            if ok then hooked = true; hookStats.setters = hookStats.setters + 1 end
+        end
+        if type(tooltip.SetItemByID) == "function" then
+            local ok = pcall(hooksecurefunc, tooltip, "SetItemByID", function(self, id)
+                RunTooltipHook(self, nil, id)
+            end)
+            if ok then hooked = true; hookStats.setters = hookStats.setters + 1 end
+        end
+    end
+    return hooked
 end
 
 local function InstallTooltipHook()
     if tooltipHooked then return true end
-
-    -- Prefer the native typed post-call when the client exposes it.
+    local hooked = false
     if TooltipDataProcessor and type(TooltipDataProcessor.AddTooltipPostCall) == "function"
         and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
         local ok = pcall(TooltipDataProcessor.AddTooltipPostCall,
             Enum.TooltipDataType.Item,
-            function(tooltip)
-                local success, err = pcall(AddTooltipLines, tooltip)
-                if not success and not tooltipErrorReported then
-                    tooltipErrorReported = true
-                    Print("Tooltip error (first occurrence): " .. tostring(err))
-                end
+            function(tooltip, tooltipData)
+                RunTooltipHook(tooltip, tooltipData)
             end)
-        if ok then
-            tooltipHooked = true
-            return true
-        end
+        if ok then hooked = true; hookStats.typed = true end
     end
 
-    -- Forever-compatible fallback and the original QIT fallback path.
-    if not GameTooltip or type(GameTooltip.HookScript) ~= "function" then return false end
-    GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
-        local ok, err = pcall(AddTooltipLines, tooltip)
-        if not ok and not tooltipErrorReported then
-            tooltipErrorReported = true
-            Print("Tooltip error (first occurrence): " .. tostring(err))
-        end
-    end)
-    if ItemRefTooltip and type(ItemRefTooltip.HookScript) == "function" then
-        ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip)
-            local ok, err = pcall(AddTooltipLines, tooltip)
-            if not ok and not tooltipErrorReported then
-                tooltipErrorReported = true
-                Print("ItemRef tooltip error (first occurrence): " .. tostring(err))
-            end
-        end)
-    end
-    tooltipHooked = true
-    return true
+    if HookTooltipFrame(GameTooltip) then hooked = true end
+    if ItemRefTooltip ~= GameTooltip and HookTooltipFrame(ItemRefTooltip) then hooked = true end
+    tooltipHooked = hooked
+    return hooked
 end
 
 local function ScanBags()
@@ -839,7 +970,8 @@ local function ListQuests()
 end
 
 local function HandleQuestAccepted(a, b)
-    local questID = tonumber(a) or tonumber(b)
+    -- QUEST_ACCEPTED normally passes (questLogIndex, questID).
+    local questID = tonumber(b) or tonumber(a)
     if not questID then return end
     local title = QuestTitle(questID)
     local record = DB.quests[questID] or {}
@@ -890,7 +1022,8 @@ local function ApiDiagnostics()
     Print("Container item APIs: " .. tostring(C_Container and type(C_Container.GetContainerItemID) == "function"))
     Print("Bank open: " .. tostring(IsBankOpen()))
     Print("Character scope: " .. tostring(DB.activeCharacterKey or "not initialized"))
-    Print("GameTooltip HookScript: " .. tostring(GameTooltip and type(GameTooltip.HookScript) == "function"))
+    Print("Tooltip hooks — typed: " .. tostring(hookStats.typed) .. ", legacy: "
+        .. tostring(hookStats.legacy) .. ", setter hooks: " .. tostring(hookStats.setters))
     Print("QuestieDB available: " .. tostring(dbReady) .. (dbReason and (" (" .. tostring(dbReason) .. ")") or ""))
     Print("QuestieDB item index: " .. (dbIndexReady and "READY" or (dbIndexRunning and "BUILDING" or "NOT STARTED")))
     if dbIndexRunning then Print("Index progress: " .. dbIndexProcessed .. " / " .. dbIndexTotal) end
