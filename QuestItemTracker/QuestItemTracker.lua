@@ -727,7 +727,6 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
 
     tooltip:AddLine(" ")
     tooltip:AddLine("|cff66ccffQuest Item Tracker|r")
-    tooltip:AddLine("Quest item · Item ID: " .. itemID, 0.75, 0.75, 0.75)
     tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
 
     local recommendation, recommendationColor = AssessItemRetention(matches, activeMap)
@@ -760,7 +759,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         end
 
         tooltip:AddLine(color .. questName .. "|r  (" .. levelText .. ")")
-        tooltip:AddLine("  " .. status .. "  |  Quest ID: " .. questID, 0.78, 0.78, 0.78)
+        tooltip:AddLine("  " .. status, 0.78, 0.78, 0.78)
 
         if entry.required and entry.required > 0 then
             tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)

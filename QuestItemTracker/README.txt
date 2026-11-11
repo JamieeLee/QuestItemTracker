@@ -34,7 +34,7 @@ TOOLTIP BEHAVIOR
 - Repeatable quest use: KEEP, even if it has been completed before.
 - A source item used only to start a quest is no longer required by that quest after it is accepted; other quest uses are still checked.
 - Every known consuming quest completed and no repeatable use remains: SAFE TO DELETE.
-- Each associated quest is listed with its name, quest ID, level, and Have / Need information where the database provides a quantity.
+- Each associated quest is listed by name, level, status, and Have / Need information where available. Technical IDs stay in developer diagnostics, not the item tooltip.
 - Quest item counts include backpack/carried bags and the personal bank while the bank window is open.
 
 IMPORTANT SAFETY NOTES
