@@ -19,10 +19,15 @@ jobs:
           luac5.3 -p QuestItemTracker/QuestItemTracker.lua
           luac5.3 -p tests/faction_and_source_items.lua
           luac5.3 -p tests/minimap_options.lua
+          luac5.3 -p tests/quest_item_pathways.lua
       - name: Run mock Forever compatibility tests
         run: |
           lua5.3 tests/faction_and_source_items.lua
           lua5.3 tests/minimap_options.lua
+          lua5.3 tests/quest_item_pathways.lua
+      - name: Test ZIP and release notes builder
+        run: |
+          python3 -m unittest discover -s tests -p 'test_release_builder.py' -v
 
       - name: Validate one changelog and current version entry
         shell: bash
@@ -38,17 +43,23 @@ jobs:
           fi
           EXTRA=$(find . -type f \( -iname '*changelog*.md' -o -iname '*release*notes*.md' -o -iname '*release*log*.md' -o -iname 'v[0-9]*.md' \) ! -path './CHANGELOG.md' -print)
           if [ -n "$EXTRA" ]; then
-            echo "All release history belongs in CHANGELOG.md; remove duplicate version/release Markdown files:"
+            echo "All release history belongs in CHANGELOG.md; remove duplicate release Markdown:"
             echo "$EXTRA"
             exit 1
           fi
 
-      - name: Build matching installable ZIP
+      - name: Build and check test installable folder
+        id: build
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 scripts/release_builder.py build --output dist
           VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
-          cp LICENSE QuestItemTracker/LICENSE
-          zip -q -r "QuestItemTracker-v${VERSION}-test.zip" QuestItemTracker
-      - uses: actions/upload-artifact@v4
+          unzip -t "dist/QITForeverV${VERSION}.zip"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Upload unpacked addon as test artifact (NO nested ZIP)
+        uses: actions/upload-artifact@v4
         with:
-          name: QIT-test-ZIP
-          path: QuestItemTracker-v*-test.zip
+          name: QITForeverV${{ steps.build.outputs.version }}-test
+          path: dist/staging/
+          if-no-files-found: error

@@ -1,0 +1,87 @@
+name: Publish QIT Forever
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (e.g. v0.2); must match .toc version'
+        required: true
+        type: string
+      publish_curseforge:
+        description: 'Upload to CurseForge on this manual rerun (may create a second CF file)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build & publish one installable ZIP
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+      CF_GAME_VERSION_IDS: ${{ vars.CF_GAME_VERSION_IDS }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - name: Resolve and verify release tag
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Invalid tag: $RELEASE_TAG"; exit 1; }
+          python3 scripts/release_builder.py validate --tag "$RELEASE_TAG"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Test release builder
+        run: python3 -m unittest discover -s tests -p 'test_release_builder.py' -v
+      - name: Build single installable ZIP + release notes
+        run: |
+          python3 scripts/release_builder.py build --tag '${{ steps.version.outputs.tag }}' --output dist
+          unzip -t "dist/QITForeverV${{ steps.version.outputs.version }}.zip"
+      - name: Upload exact ZIP to GitHub Release
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE="dist/QITForeverV${VERSION}.zip"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --title "QIT-v${VERSION}" --notes-file dist/release-notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$FILE" --title "QIT-v${VERSION}" --notes-file dist/release-notes.md --repo "$GITHUB_REPOSITORY"
+          fi
+      - name: Publish identical ZIP to CurseForge (if configured)
+        if: ${{ github.event_name == 'push' || inputs.publish_curseforge == true }}
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CF_PROJECT_ID" || -z "$CF_API_TOKEN" ]]; then
+            echo 'CurseForge skipped: set vars.CF_PROJECT_ID and secrets.CF_API_TOKEN first.'
+            exit 0
+          fi
+          [[ "$CF_PROJECT_ID" =~ ^[0-9]+$ ]] || { echo 'CF_PROJECT_ID must be numeric'; exit 1; }
+          FILE="dist/QITForeverV${VERSION}.zip"
+          # metadata is sent as the JSON STRING form part, file as the single ZIP part.
+          curl --fail-with-body --show-error --silent --retry 2 \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F 'metadata=<dist/curseforge-metadata.json' \
+            -F "file=@${FILE};type=application/zip" \
+            "https://wow.curseforge.com/api/projects/${CF_PROJECT_ID}/upload-file" \
+            --output dist/curseforge-response.json
+          cat dist/curseforge-response.json
