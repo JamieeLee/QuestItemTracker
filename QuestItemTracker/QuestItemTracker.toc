@@ -2,7 +2,7 @@
 ## Title: Quest Item Tracker
 ## Notes: Requires QuestieDB. Track quest items; click the minimap button to customize tooltips.
 ## Author: JamieeLee
-## Version: 0.4.2
+## Version: 0.4.3
 ## Dependencies: QuestieDB
 ## SavedVariables: QuestItemTrackerDB
 

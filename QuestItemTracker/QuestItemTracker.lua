@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.4.2
+-- Quest Item Tracker v0.4.3
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -575,7 +575,7 @@ local function GetQuestStatus(questID, matchesEntry, activeMap)
     if record and record.status == "abandoned" then return "FUTURE USE · ABANDONED", "|cffffcc66" end
     local level = GetQuestLevel(questID)
     local trivial = IsTrivialQuest({ questID = questID, level = level })
-    if trivial then return "FUTURE USE · GREY QUEST", "|ffc0c0c0" end
+    if trivial then return "FUTURE USE · GREY QUEST", "|cffc0c0c0" end
     return "FUTURE QUEST", "|cffffcc66"
 end
 
@@ -689,6 +689,7 @@ local DEFAULT_SETTINGS = {
     showItemIDs = false,
     showQuestLevels = true,
     showInventoryBreakdown = true,
+    showFutureStatusLabels = false,
 }
 local function SettingEnabled(key)
     local value = DB.settings[key]
@@ -712,7 +713,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 305)
+    panel:SetSize(360, 347)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -751,6 +752,7 @@ local function CreateOptionsPanel()
         { key = "showItemIDs", label = "Show item IDs" },
         { key = "showQuestLevels", label = "Show quest levels" },
         { key = "showInventoryBreakdown", label = "Show bag / bank breakdown" },
+        { key = "showFutureStatusLabels", label = "Show future quest labels" },
     }
     local checkboxes = {}
     for i, entry in ipairs(entries) do
@@ -946,9 +948,22 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         local nameLine = color .. questName .. "|r"
         if SettingEnabled("showQuestLevels") then nameLine = nameLine .. "  (" .. levelText .. ")" end
         tooltip:AddLine(nameLine)
-        local statusLine = "  " .. status
-        if SettingEnabled("showQuestIDs") then statusLine = statusLine .. "  |  Quest ID: " .. questID end
-        tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
+        -- Future status lines are optional; quest names/levels never disappear.
+        -- Grey quests retain a concise GREY QUEST marker even in compact mode.
+        if not SettingEnabled("showFutureStatusLabels") then
+            if status == "FUTURE USE · GREY QUEST" then
+                status = "GREY QUEST"
+            elseif status == "FUTURE QUEST" or status == "FUTURE USE · ABANDONED" then
+                status = nil
+            end
+        end
+        if status or SettingEnabled("showQuestIDs") then
+            local statusLine = status and ("  " .. status) or "  "
+            if SettingEnabled("showQuestIDs") then
+                statusLine = statusLine .. (status and "  |  " or "") .. "Quest ID: " .. questID
+            end
+            tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
+        end
 
         if entry.required and entry.required > 0 then
             tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
@@ -959,7 +974,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
 
     if partial then
         tooltip:AddLine("Checking remaining quests...", 0.7, 0.8, 1, true)
-    elseif activeCount == 0 and futureCount > 0 then
+    elseif activeCount == 0 and futureCount > 0 and SettingEnabled("showFutureStatusLabels") then
         tooltip:AddLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
     elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
         tooltip:AddLine("No remaining known quest uses.", 0.65, 0.85, 1, true)

@@ -1,4 +1,4 @@
-Quest Item Tracker v0.4.2 — WoW: Forever
+Quest Item Tracker v0.4.3 — WoW: Forever
 
 PURPOSE
 Hover a quest item in your bags or personal bank and quickly see:
@@ -30,7 +30,7 @@ https://github.com/Questie/QuestieDB/blob/master/docs/api.md
 TOOLTIP BEHAVIOR
 - Items absent from QuestieDB's exact quest item-objective and required-source-item data are ignored. Ordinary items do not get QIT tooltip lines.
 - Active quest use: NEEDED NOW / READY TO TURN IN.
-- Not completed yet and not currently active: FUTURE QUEST / KEEP.
+- Not completed yet and not currently active: KEEP. Future status labels are hidden by default, but can be enabled in minimap settings. Grey/trivial quests keep their GREY QUEST marker.
 - Repeatable quest use: KEEP, even if it has been completed before.
 - A source item used only to start a quest is no longer required by that quest after it is accepted; other quest uses are still checked.
 - Every known consuming quest completed and no repeatable use remains: SAFE TO DELETE.
@@ -80,3 +80,10 @@ PATCH 0.4.2 — MINIMAP SETTINGS
 - Toggle quest IDs (off), item IDs (off), quest levels (on), and bag/bank breakdown (on).
 - Settings save across characters on the account; quest history remains character-specific.
 - Quest and item IDs remain available to developer commands. Retention logic is unchanged.
+
+PATCH 0.4.3 — COMPACT FUTURE QUEST LABELS
+- Future quest status subtitles are hidden by default, but quest names and levels remain.
+- Trivial quests keep the GREY QUEST marker, even in compact mode.
+- A new minimap option restores FUTURE QUEST / FUTURE USE subtitles when desired.
+- Corrects the malformed grey quest text-color escape.
+- No change to quest matching, inventory counts, or keep/delete decision logic.
