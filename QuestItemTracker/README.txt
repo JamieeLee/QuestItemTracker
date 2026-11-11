@@ -16,7 +16,12 @@ Players do not need to run /qit import, scan a database, initialize anything, or
 DEPENDENCY
 Requires the standalone QuestieDB data addon for WoW Forever (Interface 16001).
 The full Questie quest tracker, map, and navigation addon are NOT required.
-Install QuestieDB once alongside Quest Item Tracker. QIT loads and uses its data automatically.
+Install QuestieDB once alongside Quest Item Tracker, then enable BOTH addons in the character-select AddOns list.
+QIT declares QuestieDB as a required dependency in its TOC. When both are enabled, WoW loads QuestieDB before QIT.
+If QuestieDB is missing or disabled, WoW will mark QIT with a dependency problem and will not load QIT.
+Re-enable QuestieDB in the AddOns list and reload/login. Enabling QIT does not necessarily auto-enable a dependency the player explicitly disabled.
+Disabling QIT does not disable QuestieDB: it is a shared library that other addons may use.
+There is no separate QuestieDB initialization command; QIT builds its own item lookup automatically.
 QuestieDB Forever release:
 https://www.curseforge.com/wow/addons/questiedb/files/9550834
 QuestieDB API documentation:

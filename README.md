@@ -8,7 +8,7 @@ A lightweight World of Warcraft Forever addon that answers one question when you
 - **Current proposal:** v0.4.0 (`feature/automatic-quest-sync`)
 - **Game interface:** 16001
 - **License:** GNU GPL-3.0
-- **Data dependency:** standalone QuestieDB for Forever; the full Questie tracker is not required.
+- **Required dependency:** standalone QuestieDB for Forever; enable both addons in WoW's AddOns list. The full Questie tracker is not required.
 
 ## v0.4.0 proposal
 
