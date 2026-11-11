@@ -23,3 +23,13 @@ jobs:
         run: |
           lua5.3 tests/faction_and_source_items.lua
           lua5.3 tests/minimap_options.lua
+
+      - name: Build matching installable ZIP
+        run: |
+          VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
+          cp LICENSE QuestItemTracker/LICENSE
+          zip -q -r "QuestItemTracker-v${VERSION}-test.zip" QuestItemTracker
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QIT-test-ZIP
+          path: QuestItemTracker-v*-test.zip
