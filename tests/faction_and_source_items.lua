@@ -14,11 +14,11 @@ _G.UnitFactionGroup=function() return faction end
 local ally=4294967373
 local horde=8589934770
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end,Enum={factionRaceMasks={Alliance=ally,Horde=horde}}}
-local names={ [100]='Horde Finished',[200]='Alliance Future',[300]='Neutral Work',[6134]='Ghost-o-plasm Round Up',[400]='Alliance Skyborne',[500]='Horde Skyborne'}
-local levels={ [100]=18,[200]=19,[300]=20,[6134]=39,[400]=60,[500]=60}
+local names={ [100]='Horde Finished',[200]='Alliance Future',[300]='Neutral Work',[6134]='Ghost-o-plasm Round Up',[400]='Alliance Skyborne',[500]='Horde Skyborne',[601]='Spell tool',[602]='Required source',[603]='Item starter',[604]='Event reference',[605]='Reward-only',[606]='Repeatable item'}
+local levels={ [100]=18,[200]=19,[300]=20,[6134]=39,[400]=60,[500]=60,[601]=30,[602]=30,[603]=30,[604]=30,[605]=30,[606]=30}
 local raceMasks={ [100]=horde,[200]=ally,[300]=0,[6134]=0,[400]=4294967296,[500]=8589934592}
 _G.QuestDB={
- GetAllIds=function()return {100,200,300,400,500,6134} end,
+ GetAllIds=function()return {100,200,300,400,500,601,602,603,604,605,606,6134} end,
  name=function(id)return names[id] end,
  questLevel=function(id)return levels[id] end,
  requiredRaces=function(id)return raceMasks[id] end,
@@ -26,26 +26,35 @@ _G.QuestDB={
   if id==100 or id==200 then return {nil,nil,{{9001,'Mixed item',3}}} end
   if id==300 then return {nil,nil,{{9003,'Neutral item',2}}} end
   if id==400 or id==500 then return {nil,nil,{{9004,'Skyborne item',2}}} end
+  if id==601 then return {[6]={{8,'Cast spell',9101}}} end
+  if id==606 then return {[3]={{9107,'Repeat item',2}}} end
   return {nil,nil,{{15849,'Ghost-o-Plasm',8}}}
  end,
- requiredSourceItems=function()return nil end,
+ requiredSourceItems=function(id)return id==602 and {9102} or nil end,
+ startedBy=function(id)return id==603 and {[3]={9103}} or nil end,
+ extraObjectives=function(id)return id==604 and {{{},3,'Event',0,{{'item',9105}}}} or nil end,
+ specialFlags=function(id)return id==606 and 1 or 0 end,
  sourceItemId=function(id)return id==6134 and 15848 or 0 end,
 }
 _G.ItemDB={relatedQuests=function(id)
  if id==9001 then return {100,200} end
  if id==9003 then return {300} end
  if id==9004 then return {400,500} end
+ if id==9101 then return {601} end
+ if id==9103 then return {603} end
+ if id==9105 then return {604} end
+ if id==9107 then return {606} end
  -- Item 15848 has no reverse relation: the active-quest fallback must work.
  return nil
- end}
-_G.C_Item={GetItemName=function(id)return ({[9001]='Mixed Item',[9003]='Neutral Item',[9004]='Skyborne Item',[15848]='Crate of Ghost Magnets',[6948]='Hearthstone'})[id] end}
+ end, startQuest=function(id)return id==9104 and 603 or 0 end, questRewards=function(id)return id==9106 and {605} end}
+_G.C_Item={GetItemName=function(id)return ({[9001]='Mixed Item',[9003]='Neutral Item',[9004]='Skyborne Item',[15848]='Crate of Ghost Magnets',[6948]='Hearthstone',[9101]='Spell tool',[9102]='Required source',[9103]='Quest starter',[9104]='Item starter via itemDB',[9105]='Event item',[9106]='Reward-only',[9107]='Repeat item'})[id] end}
 _G.GetItemInfo=function(id)return C_Item.GetItemName(id) end
-local completed={[100]=true}
+local completed={[100]=true,[606]=true}
 _G.C_QuestLog={
- GetNumQuestLogEntries=function()return 1 end,
- GetInfo=function(i) if i==1 then return {questID=6134,isHeader=false,title=names[6134],level=39,isComplete=false} end end,
+ GetNumQuestLogEntries=function()return 2 end,
+ GetInfo=function(i) if i==1 then return {questID=6134,isHeader=false,title=names[6134],level=39,isComplete=false} end if i==2 then return {questID=602,isHeader=false,title=names[602],level=30,isComplete=false} end end,
  GetQuestObjectives=function()return {} end,
- GetAllCompletedQuestIDs=function()return {100} end,
+ GetAllCompletedQuestIDs=function()return {100,606} end,
  IsQuestFlaggedCompleted=function(id)return completed[id] or false end,
  IsRepeatableQuest=function()return false end,
  IsQuestReplayable=function()return false end,
@@ -169,4 +178,15 @@ assert(alliance:find('Alliance Future',1,true) and not alliance:find('Horde Fini
 assert(alliance:find('KEEP',1,true),'Alliance future item should be kept')
 local allianceSky=tooltip(9004)
 assert(allianceSky:find('Alliance Skyborne',1,true) and not allianceSky:find('Horde Skyborne',1,true),'Alliance Skyborne mask incorrect')
+-- Item-bearing quest paths that previously fell through QIT's lookup.
+assert(tooltip(9101):find('Spell tool',1,true),'spell-use item not indexed')
+local neededSource=tooltip(9102)
+assert(neededSource:find('Required source',1,true) and neededSource:find('NEEDED',1,true),'requiredSourceItems wrongly treated as a starter')
+assert(tooltip(9103):find('STARTS QUEST',1,true),'quest-side item starter missing')
+assert(tooltip(9104):find('KEEP',1,true),'ItemDB.startQuest missing')
+local event=tooltip(9105)
+assert(event:find('Event reference',1,true) and event:find('REVIEW',1,true) and not event:find('SAFE TO DELETE',1,true),'event reference incorrectly declared safe')
+assert(tooltip(9106)=='','reward-only item should not be decorated')
+local repeatable=tooltip(9107)
+assert(repeatable:find('KEEP',1,true) and not repeatable:find('SAFE TO DELETE',1,true),'QuestieDB repeatable flag was ignored')
 print('FACTION + PROVIDED-ITEM TESTS PASSED')

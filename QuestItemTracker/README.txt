@@ -1,32 +1,42 @@
-Quest Item Tracker v0.2 TEST BUILD — World of Warcraft Forever
+Quest Item Tracker v0.2 TEST BUILD — WoW Forever
 Author: JamieeLee
 
-CHANGES FROM v0.1
-- Recognizes quest-giver-provided items via QuestDB.sourceItemId.
-- Fixes Crate of Ghost Magnets (item 15848) for Ghost-o-plasm Round Up (quest 6134).
-- While indexing, verifies source items against the current active quest log.
-- Keeps provided items needed during an active quest, not as start-only requirements.
-- Added a faction-filter checkbox to minimap settings (enabled by default).
-- Shows quests for your current Horde or Alliance faction plus unrestricted quests.
-- Hides quests explicitly restricted to the opposing faction using QuestieDB's
-  requiredRaces field and provider-supplied factionRaceMasks.
-- Applies the same filter to KEEP / SAFE TO DELETE decisions, not just names.
-- Always shows active quests, even if database restrictions disagree.
-- Supports Forever Skyborne race bits without 32-bit truncation.
-- Can toggle the filter off to see every quest association as in v0.1.
-- Unknown or unrestricted faction data remains visible rather than risking
-  hiding neutral quests. QuestieDB data can be incomplete.
+This build is proposed in draft PR #2. v0.1 is still the public release.
+Requires standalone QuestieDB; full Questie is NOT required.
 
-INSTALL
-Requires standalone QuestieDB (not the full Questie addon).
-Replace the QuestItemTracker folder in Interface/AddOns.
-Do not delete saved variables. Your current v0.1 release remains unchanged.
+NEW QUEST ITEM COVERAGE
+- Quest objective items: QuestDB.objectives()[3]
+- Quest spell-use items: QuestDB.objectives()[6][n][3]
+- Quest-required source items: QuestDB.requiredSourceItems()
+- Quest-giver-provided tools: QuestDB.sourceItemId()
+- Items that START quests: QuestDB.startedBy()[3] and ItemDB.startQuest()
+- Event/extra-objective item references: shown as REVIEW, not proof of need.
+- Native current-quest bag metadata and exact objective text supplement missing
+  server-specific database links.
+- Repeatable quests also use QuestDB.specialFlags.
 
-SETTINGS
-Click the draggable minimap book icon, or type /qit options.
-Only show my faction quests: ON by default.
-Other settings and tooltip features work as in v0.1.
+Rewards and generic related-quest metadata are NOT assumed to be item uses.
+NPC/object/automatic quest starters are followed once accepted in the quest log.
 
-CAUTION
-QIT never sells, deletes, or moves items. SAFE TO DELETE only refers to
-known item/quest associations within the installed QuestieDB data.
+FACTION FILTER
+The minimap option "Only show my faction quests" is enabled by default.
+Horde characters don't see explicit Alliance-only quests, and vice versa.
+Unknown, neutral and already-active quests remain shown. Filtering also applies
+to KEEP/SAFE decisions. You can turn the filter off in minimap settings.
+
+ITEM RETENTION
+An item required to START a quest may no longer be needed after acceptance.
+Quest-required items and quest-giver-provided tools can still be needed DURING
+the active quest; they are not confused with starter items. Items for completed
+repeatable quests may be needed again.
+QIT never deletes or sells an item. SAFE TO DELETE applies only to the uses
+known to the installed QuestieDB and is withheld until indexing is finished.
+Event-reference-only matches show REVIEW rather than a false KEEP/SAFE verdict.
+
+No manual import, initialization or database scan is required.
+Quest states and character history are updated automatically on login.
+Older QIT SavedVariables remain preserved.
+
+/qit options  - tooltip preferences
+/qit db       - API and index diagnostics
+/qit import   - manually refresh the quest log (normally automatic)
