@@ -1,71 +1,79 @@
-Quest Item Tracker v0.3.4 — WoW: Forever
+Quest Item Tracker v0.1 — World of Warcraft Forever
+Author: JamieeLee
 
-THIS BUILD ADDS CHARACTER SNAPSHOT IMPORT + CONSERVATIVE ITEM RETENTION STATUS.
+PURPOSE
+Hover an item used by a quest to see the quests that need it, whether they are
+active, completed, future, or repeatable, and whether to keep the item.
+QIT does not annotate ordinary items with no verified quest use.
 
-INSTALL
-1. Exit WoW.
-2. Replace ONLY the QuestItemTracker addon folder.
-3. Keep your existing WTF\Account\...\SavedVariables\QuestItemTracker.lua file.
-4. QuestieDB is optional for live tracking, but required for broad future quest/item associations.
-5. Do not delete the SavedVariables file; this build retains old QIT history.
+DEPENDENCY AND INSTALLATION
+QuestieDB (standalone data addon) is required. Full Questie is not required.
+Install QuestieDB and QuestItemTracker in Interface/AddOns; enable both in WoW.
+QIT synchronizes quest history and builds the QuestieDB item index automatically.
+There is no required /qit import, setup, or initialization step.
 
-NO ONE IS "F**KED" STARTING MID-RUN
-On login, the addon reads the current quest log and imports all completed quest IDs returned by C_QuestLog.GetAllCompletedQuestIDs.
-Use /qit import at any time to take that snapshot again.
-It records quest names/IDs and completed status. For quests completed before installing QIT, original completion dates and accept/abandon event history are not available from the client; the addon marks those records as imported with unknown dates rather than inventing timestamps.
-Active quests are imported from the quest log with their current status and objective data.
-New accepts, turn-ins, and removals are recorded with local timestamps from the time QIT is installed.
-
-ITEM RETENTION ASSESSMENT
-The item tooltip now gives one of three conservative recommendations:
-- KEEP: there is an active quest, a known future quest use, or a repeatable use.
-- LIKELY SAFE TO DELETE: all known non-repeatable consuming quest uses are completed and there are no uncertain associations.
-- REVIEW: only generic/ambiguous associations are known, or no confirmed consuming use exists.
-
-"Likely safe" is not a guarantee. Quest databases can be incomplete, server-specific quests may be missing, and an item may have a non-quest use. QIT never deletes or vendors anything.
-
-QUEST LOOKUP
-- Preserves original native bag quest metadata and active objective-text matching.
-- Optional QuestieDB adds database quest-objective relationships, quest levels, future associations and Have/Need counts.
-- QuestieDB is data-only; the full Questie tracker/map addon is not required.
-- DB index is built incrementally in small batches.
-
-COMMANDS
-/qit             Help
-/qit import      Import current active and completed quest snapshot from the client
-/qit db          API/database status and index progress
-/qit quests      List current active quests
-/qit completed   List completed quests imported from Forever
-/qit completed word  Filter completed quest names
-/qit history     Show local event history + imported completed snapshot count
-/qit history word  Filter local event history
-/qit scan        Scan bag quest-item metadata
-/qit items       List item IDs observed by QIT
-
-DATABASE DEPENDENCY
-QuestieDB standalone Forever release (Interface 16001):
+QuestieDB Forever release:
 https://www.curseforge.com/wow/addons/questiedb/files/9550834
-Full Questie addon is not required.
+QuestieDB public API:
+https://github.com/Questie/QuestieDB/blob/master/docs/api.md
 
-IMPORTANT LIMITATIONS
-- Bulk completed import requires C_QuestLog.GetAllCompletedQuestIDs.
-- Imported older completions have unknown historical completion dates.
-- Earlier abandoned quests cannot generally be recovered unless they exist in QIT's prior SavedVariables.
-- Inventory count is bags only, not bank.
-- Grey/trivial and repeatable classification are best-effort.
-- "Not in quest log" is not proof that a quest is available now; prerequisites, faction, class and level gates still apply.
-- A database miss is not proof that an item has no use.
+TOOLTIPS AND RETENTION
+- Active consuming quest: NEEDED NOW or READY TO TURN IN.
+- Uncompleted future quest use: KEEP.
+- Repeatable quest use: KEEP, even after a previous completion.
+- All known one-time consuming quests complete: SAFE TO DELETE.
+- A source item only needed to start a quest no longer counts as a required
+  item for that quest once it has been accepted, unless another quest needs it.
+- Shows quest names and levels and item Have / Need counts.
+- Counts carried bags and the personal bank while the bank window is open.
+- Ordinary items without a verified quest objective/source-item relationship
+  receive no extra QIT tooltip lines.
+- Modern item-data callbacks, legacy tooltips, and item setter hooks are used
+  for broader compatibility with inventory addons.
 
-DATA PRESERVATION
-QuestItemTrackerDB.quests, .events, and .items are retained. This build adds import metadata; it does not wipe existing SavedVariables.
+MINIMAP SETTINGS
+Click the draggable book icon near your minimap, or type /qit options.
+Preferences save automatically.
+- Show quest IDs: OFF by default
+- Show item IDs: OFF by default
+- Show quest levels: ON by default
+- Show bag / bank breakdown: ON by default
+- Show future quest labels: OFF by default
 
-PATCH 0.3.3 — COMPLETED QUEST SNAPSHOT
-- /qit import refreshes active and completed quest snapshots from the game.
-- /qit completed lists completed quest IDs, including older completions imported mid-run.
-- Imported completion dates are labeled unknown; locally recorded turn-in dates are preserved.
-- Item assessment distinguishes active/future/repeatable uses from completed non-repeatable uses.
+Compact mode keeps all quest names and levels. Repeated FUTURE QUEST and FUTURE
+USE labels are hidden. Trivial quests keep a GREY QUEST marker in either mode.
+Turning on future quest labels restores detailed subtitles.
 
+PERSISTENT CHARACTER DATA
+The current quest log and completed quest IDs are imported automatically.
+Quest accepts, turn-ins, removals, and quest log updates refresh the history.
+Existing pre-release SavedVariables are retained and migrated into one
+character's history on first login; history thereafter is separated by
+character. Older completed quest timestamps cannot be reconstructed from
+completed IDs alone.
 
-PATCH 0.3.4 — TOOLTIP NIL-FUNCTION FIX
-- Fixed repeatable-quest status lookups to call the correctly named helper.
-- Fixes the repeated tooltip error reported in v0.3.3.
+OPTIONAL DIAGNOSTIC COMMANDS
+/qit            Show/hide tooltip settings
+/qit options    Show/hide tooltip settings
+/qit db         Show QuestieDB availability and index/hook diagnostics
+/qit quests     List current active quests
+/qit completed  List completed quests
+/qit history    Show recorded quest events
+/qit items      List observed item IDs
+/qit scan       Scan bag quest-item metadata
+/qit import     Refresh the active and completed quest snapshot manually
+
+LIMITATIONS AND SAFETY
+- QIT never deletes, sells, or moves items.
+- SAFE TO DELETE applies only to known QuestieDB item objectives and required
+  source items. Server-specific or missing quest data and non-quest uses
+  cannot be ruled out.
+- The database item index is built incrementally. Verified relations can
+  appear early, but QIT withholds SAFE TO DELETE until indexing is complete.
+- Bank counts are available while the personal bank is open, not the account
+  bank or remote storage.
+- Older completion dates and past abandoned quest details may be unavailable.
+
+RELEASE HISTORY
+v0.1: Initial public release of Quest Item Tracker. Previous numbered ZIPs
+were internal development iterations. GitHub PR #1 preserves their changes.
