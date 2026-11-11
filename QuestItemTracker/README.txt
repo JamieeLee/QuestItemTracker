@@ -1,79 +1,46 @@
-Quest Item Tracker v0.1 — World of Warcraft Forever
+Quest Item Tracker v0.2 TEST BUILD — WoW Forever
 Author: JamieeLee
 
-PURPOSE
-Hover an item used by a quest to see the quests that need it, whether they are
-active, completed, future, or repeatable, and whether to keep the item.
-QIT does not annotate ordinary items with no verified quest use.
+This build is proposed in draft PR #2. v0.1 is still the public release.
+Requires standalone QuestieDB; full Questie is NOT required.
 
-DEPENDENCY AND INSTALLATION
-QuestieDB (standalone data addon) is required. Full Questie is not required.
-Install QuestieDB and QuestItemTracker in Interface/AddOns; enable both in WoW.
-QIT synchronizes quest history and builds the QuestieDB item index automatically.
-There is no required /qit import, setup, or initialization step.
+NEW QUEST ITEM COVERAGE
+- Quest objective items: QuestDB.objectives()[3]
+- Quest spell-use items: QuestDB.objectives()[6][n][3]
+- Quest-required source items: QuestDB.requiredSourceItems()
+- Quest-giver-provided tools: QuestDB.sourceItemId()
+- Items that START quests: QuestDB.startedBy()[3] and ItemDB.startQuest()
+- Event/extra-objective item references: shown as REVIEW, not proof of need.
+- Native current-quest bag metadata and exact objective text supplement missing
+  server-specific database links.
+- Repeatable quests also use QuestDB.specialFlags.
 
-QuestieDB Forever release:
-https://www.curseforge.com/wow/addons/questiedb/files/9550834
-QuestieDB public API:
-https://github.com/Questie/QuestieDB/blob/master/docs/api.md
+Miscellaneous/quest-class reward items now show the quest they came from
+(ItemDB.questRewards) as provenance only. Bloody Map (271745) is rewarded by
+Open the Maw (95682) for Horde. This does NOT establish that the reward must
+be kept or can be safely deleted; its future use is unconfirmed.
+Ordinary equipment rewards remain silent; generic related-quest metadata is
+never proof of need. NPC/object/automatic quest starters are tracked live.
 
-TOOLTIPS AND RETENTION
-- Active consuming quest: NEEDED NOW or READY TO TURN IN.
-- Uncompleted future quest use: KEEP.
-- Repeatable quest use: KEEP, even after a previous completion.
-- All known one-time consuming quests complete: SAFE TO DELETE.
-- A source item only needed to start a quest no longer counts as a required
-  item for that quest once it has been accepted, unless another quest needs it.
-- Shows quest names and levels and item Have / Need counts.
-- Counts carried bags and the personal bank while the bank window is open.
-- Ordinary items without a verified quest objective/source-item relationship
-  receive no extra QIT tooltip lines.
-- Modern item-data callbacks, legacy tooltips, and item setter hooks are used
-  for broader compatibility with inventory addons.
+FACTION FILTER
+The minimap option "Only show my faction quests" is enabled by default.
+Horde characters don't see explicit Alliance-only quests, and vice versa.
+Unknown, neutral and already-active quests remain shown. Filtering also applies
+to KEEP/SAFE decisions. You can turn the filter off in minimap settings.
 
-MINIMAP SETTINGS
-Click the draggable book icon near your minimap, or type /qit options.
-Preferences save automatically.
-- Show quest IDs: OFF by default
-- Show item IDs: OFF by default
-- Show quest levels: ON by default
-- Show bag / bank breakdown: ON by default
-- Show future quest labels: OFF by default
+ITEM RETENTION
+An item required to START a quest may no longer be needed after acceptance.
+Quest-required items and quest-giver-provided tools can still be needed DURING
+the active quest; they are not confused with starter items. Items for completed
+repeatable quests may be needed again.
+QIT never deletes or sells an item. SAFE TO DELETE applies only to the uses
+known to the installed QuestieDB and is withheld until indexing is finished.
+Event-reference-only matches show REVIEW rather than a false KEEP/SAFE verdict.
 
-Compact mode keeps all quest names and levels. Repeated FUTURE QUEST and FUTURE
-USE labels are hidden. Trivial quests keep a GREY QUEST marker in either mode.
-Turning on future quest labels restores detailed subtitles.
+No manual import, initialization or database scan is required.
+Quest states and character history are updated automatically on login.
+Older QIT SavedVariables remain preserved.
 
-PERSISTENT CHARACTER DATA
-The current quest log and completed quest IDs are imported automatically.
-Quest accepts, turn-ins, removals, and quest log updates refresh the history.
-Existing pre-release SavedVariables are retained and migrated into one
-character's history on first login; history thereafter is separated by
-character. Older completed quest timestamps cannot be reconstructed from
-completed IDs alone.
-
-OPTIONAL DIAGNOSTIC COMMANDS
-/qit            Show/hide tooltip settings
-/qit options    Show/hide tooltip settings
-/qit db         Show QuestieDB availability and index/hook diagnostics
-/qit quests     List current active quests
-/qit completed  List completed quests
-/qit history    Show recorded quest events
-/qit items      List observed item IDs
-/qit scan       Scan bag quest-item metadata
-/qit import     Refresh the active and completed quest snapshot manually
-
-LIMITATIONS AND SAFETY
-- QIT never deletes, sells, or moves items.
-- SAFE TO DELETE applies only to known QuestieDB item objectives and required
-  source items. Server-specific or missing quest data and non-quest uses
-  cannot be ruled out.
-- The database item index is built incrementally. Verified relations can
-  appear early, but QIT withholds SAFE TO DELETE until indexing is complete.
-- Bank counts are available while the personal bank is open, not the account
-  bank or remote storage.
-- Older completion dates and past abandoned quest details may be unavailable.
-
-RELEASE HISTORY
-v0.1: Initial public release of Quest Item Tracker. Previous numbered ZIPs
-were internal development iterations. GitHub PR #1 preserves their changes.
+/qit options  - tooltip preferences
+/qit db       - API and index diagnostics
+/qit import   - manually refresh the quest log (normally automatic)

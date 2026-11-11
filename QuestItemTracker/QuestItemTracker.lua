@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.1
+-- Quest Item Tracker v0.2
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -379,6 +379,66 @@ local function QuestieDBReady()
     return true
 end
 
+-- Centralized QuestieDB item relations: full indexing and fast on-hover
+-- lookup must agree, or quest items are missed depending on timing.
+-- Only item-bearing quest data is indexed; generic item relations and rewards
+-- aren't evidence that an item is required.
+local function VisitQuestItemRelations(questID, add)
+    local objectives = SafeCall(QuestDB and QuestDB.objectives, questID)
+    if type(objectives) == "table" then
+        local items = objectives[3]
+        if type(items) == "table" then
+            for _, row in ipairs(items) do
+                if type(row) == "table" then
+                    add(row[1], questID, "database objective", tonumber(row[3]))
+                end
+            end
+        end
+        local spells = objectives[6]
+        if type(spells) == "table" then
+            for _, row in ipairs(spells) do
+                if type(row) == "table" then
+                    -- Spell objective: { spellId, description, requiredItemId }.
+                    add(row[3], questID, "database spell item", 1)
+                end
+            end
+        end
+    end
+
+    local required = SafeCall(QuestDB and QuestDB.requiredSourceItems, questID)
+    if type(required) == "table" then
+        for _, itemID in ipairs(required) do
+            add(itemID, questID, "database source item", 1)
+        end
+    end
+    add(SafeCall(QuestDB and QuestDB.sourceItemId, questID),
+        questID, "database provided item", 1)
+
+    local starters = SafeCall(QuestDB and QuestDB.startedBy, questID)
+    local starterItems = type(starters) == "table" and starters[3] or nil
+    if type(starterItems) == "table" then
+        for _, itemID in ipairs(starterItems) do
+            add(itemID, questID, "database quest starter")
+        end
+    end
+
+    -- Extra-objective references describe event links, not confirmed item
+    -- requirements. Surface cautiously; do not claim NEEDED or SAFE.
+    local extras = SafeCall(QuestDB and QuestDB.extraObjectives, questID)
+    if type(extras) == "table" then
+        for _, row in ipairs(extras) do
+            local refs = type(row) == "table" and row[5] or nil
+            if type(refs) == "table" then
+                for _, reference in ipairs(refs) do
+                    if type(reference) == "table" and reference[1] == "item" then
+                        add(reference[2], questID, "database event item reference")
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function BuildQuestItemIndex()
     if dbIndexRunning or dbIndexReady then return end
     local ready, reason = QuestieDBReady()
@@ -408,22 +468,7 @@ local function BuildQuestItemIndex()
         while budget > 0 and cursor <= #ids do
             local questID = tonumber(ids[cursor])
             if questID then
-                local objectives = SafeCall(QuestDB.objectives, questID)
-                local itemObjectives = type(objectives) == "table" and objectives[3] or nil
-                if type(itemObjectives) == "table" then
-                    for _, objective in ipairs(itemObjectives) do
-                        if type(objective) == "table" then
-                            IndexQuestItem(objective[1], questID, "database objective", tonumber(objective[3]))
-                        end
-                    end
-                end
-
-                local requiredSources = SafeCall(QuestDB.requiredSourceItems, questID)
-                if type(requiredSources) == "table" then
-                    for _, itemID in ipairs(requiredSources) do
-                        IndexQuestItem(itemID, questID, "database source item", 1)
-                    end
-                end
+                VisitQuestItemRelations(questID, IndexQuestItem)
             end
             cursor = cursor + 1
             dbIndexProcessed = dbIndexProcessed + 1
@@ -441,47 +486,56 @@ local function BuildQuestItemIndex()
 end
 
 -- A fast, per-item lookup while the full reverse index is still warming up.
--- ItemDB.relatedQuests provides *candidate* quest IDs only. Confirm each actual item
--- objective or required source item against QuestDB before showing anything.
+-- ItemDB.relatedQuests supplies candidate IDs, but some provider-given tools
+-- have no reverse link. Always inspect the small active quest log as a fallback.
+-- Every candidate must be confirmed against exact QuestDB item fields.
 -- Never use this partial set to declare an item safe to delete.
+-- Before indexing completes, inspect only reverse candidates, direct item
+-- quest starters, and the player's active quests. Never scan all quests on hover.
 local function LookupItemDuringIndex(itemID)
-    if not QuestieDBReady() or type(ItemDB) ~= "table"
-        or type(ItemDB.relatedQuests) ~= "function" then
-        return nil
-    end
-    local candidateIDs = SafeCall(ItemDB.relatedQuests, itemID)
-    if type(candidateIDs) ~= "table" then return nil end
-
-    local matches = {}
-    for _, rawQuestID in ipairs(candidateIDs) do
-        local questID = tonumber(rawQuestID)
-        if questID and questID > 0 then
-            local objectives = SafeCall(QuestDB.objectives, questID)
-            local itemObjectives = type(objectives) == "table" and objectives[3] or nil
-            if type(itemObjectives) == "table" then
-                for _, objective in ipairs(itemObjectives) do
-                    if type(objective) == "table" and tonumber(objective[1]) == itemID then
-                        AddAssociation(matches, questID, "database objective", tonumber(objective[3]))
-                    end
-                end
+    if not QuestieDBReady() then return nil end
+    local matches, checked = {}, {}
+    local candidateIDs = SafeCall(ItemDB and ItemDB.relatedQuests, itemID)
+    local function CheckQuest(questID)
+        questID = tonumber(questID)
+        if not questID or questID <= 0 or checked[questID] then return end
+        checked[questID] = true
+        VisitQuestItemRelations(questID, function(id, quest, source, count)
+            if tonumber(id) == itemID then
+                AddAssociation(matches, quest, source, count)
             end
-            local sources = SafeCall(QuestDB.requiredSourceItems, questID)
-            if type(sources) == "table" then
-                for _, sourceID in ipairs(sources) do
-                    if tonumber(sourceID) == itemID then
-                        AddAssociation(matches, questID, "database source item", 1)
-                        break
-                    end
-                end
-            end
-        end
+        end)
     end
+    if type(candidateIDs) == "table" then
+        for _, questID in ipairs(candidateIDs) do CheckQuest(questID) end
+    end
+    local starter = tonumber(SafeCall(ItemDB and ItemDB.startQuest, itemID))
+    if starter and starter > 0 then
+        AddAssociation(matches, starter, "database quest starter")
+        CheckQuest(starter)
+    end
+    local active = GetActiveQuestMap()
+    for questID in pairs(active) do CheckQuest(questID) end
     return next(matches) and matches or nil
 end
 
--- Item membership comes exclusively from QuestDB item objectives and requiredSourceItems.
--- This intentionally excludes generic related-quest and quest-reward links: those do not
--- prove that the player must keep or turn in the item.
+-- ItemDB.questRewards establishes provenance, NOT an item requirement.
+-- Only miscellaneous/quest-class reward items get source information here.
+-- Ordinary gear rewards stay silent unless separately needed by a quest.
+local function AddRewardProvenance(itemID, matches)
+    local itemClass = tonumber(SafeCall(ItemDB and ItemDB.class, itemID))
+    if itemClass ~= 12 and itemClass ~= 15 then return end
+    if itemClass == 15 and tonumber(SafeCall(ItemDB and ItemDB.subClass, itemID)) ~= 0 then return end
+    local rewardQuests = SafeCall(ItemDB and ItemDB.questRewards, itemID)
+    if type(rewardQuests) ~= "table" then return end
+    for _, rawQuestID in ipairs(rewardQuests) do
+        local questID = tonumber(rawQuestID)
+        local title = questID and SafeCall(QuestDB and QuestDB.name, questID)
+        if questID and questID > 0 and type(title) == "string" and title ~= "" then
+            AddAssociation(matches, questID, "database quest reward")
+        end
+    end
+end
 
 local function NativeBagQuestInfo(itemID, matches)
     if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function"
@@ -495,7 +549,7 @@ local function NativeBagQuestInfo(itemID, matches)
             local slotID = SafeCall(C_Container.GetContainerItemID, bag, slot)
             if tonumber(slotID) == tonumber(itemID) then
                 local qinfo = SafeCall(C_Container.GetContainerItemQuestInfo, bag, slot)
-                if type(qinfo) == "table" and qinfo.questID then
+                if type(qinfo) == "table" and tonumber(qinfo.questID) and tonumber(qinfo.questID) > 0 then
                     AddAssociation(matches, qinfo.questID, "native bag metadata")
                 end
             end
@@ -509,29 +563,45 @@ local function ActiveObjectiveMatches(itemName, active, matches)
 
     for questID, quest in pairs(active) do
         local knownEntry = matches[questID]
-        if knownEntry then
-            for _, objective in ipairs(quest.objectives or {}) do
-                local text = objective.text or ""
-                local lowerText = string.lower(text)
-                if objective.type == "item" and lowerText ~= ""
-                    and (string.find(lowerText, lowerName, 1, true)
-                        or string.find(lowerName, lowerText, 1, true)) then
-                    knownEntry.sources["active quest objective"] = true
-                    knownEntry.detail = text
-                    knownEntry.fulfilled = tonumber(objective.numFulfilled)
-                    knownEntry.required = tonumber(objective.numRequired) or knownEntry.required
-                    knownEntry.finished = objective.finished
-                    break
+        for _, objective in ipairs(quest.objectives or {}) do
+            local text = objective.text or ""
+            local lowerText = string.lower(text)
+            local matchingKnown = knownEntry and objective.type == "item"
+                and (string.find(lowerText, lowerName, 1, true)
+                    or string.find(lowerName, lowerText, 1, true))
+            -- Only accept exact item names or names followed by quantity
+            -- delimiters when using the client's active objective as a fallback.
+            local suffix = string.sub(lowerText, #lowerName + 1)
+            local exactName = objective.type == "item"
+                and string.sub(lowerText, 1, #lowerName) == lowerName
+                and (suffix == "" or string.sub(suffix, 1, 1) == ":"
+                    or string.match(suffix, "^%s+%d+%s*/%s*%d+"))
+            if matchingKnown or exactName then
+                if not knownEntry then
+                    AddAssociation(matches, questID, "active quest objective",
+                        tonumber(objective.numRequired))
+                    knownEntry = matches[questID]
                 end
+                knownEntry.sources["active quest objective"] = true
+                knownEntry.detail = text
+                knownEntry.fulfilled = tonumber(objective.numFulfilled)
+                knownEntry.required = tonumber(objective.numRequired) or knownEntry.required
+                knownEntry.finished = objective.finished
+                break
             end
         end
     end
 end
 
 local function IsQuestRepeatableByID(questID)
-    local value = SafeCall(C_QuestLog and C_QuestLog.IsRepeatableQuest, questID)
-    if value == nil then value = SafeCall(C_QuestLog and C_QuestLog.IsQuestReplayable, questID) end
-    return value == true
+    if SafeCall(C_QuestLog and C_QuestLog.IsRepeatableQuest, questID) == true
+        or SafeCall(C_QuestLog and C_QuestLog.IsQuestReplayable, questID) == true then
+        return true
+    end
+    -- The client may return false for unaccepted repeatables. QuestieDB's
+    -- specialFlags lowest bit denotes a repeatable quest.
+    local flags = tonumber(SafeCall(QuestDB and QuestDB.specialFlags, questID))
+    return flags ~= nil and flags > 0 and flags % 2 == 1
 end
 
 local function GetQuestLevel(questID, activeInfo)
@@ -549,16 +619,40 @@ local function GetQuestLevel(questID, activeInfo)
     return nil
 end
 
+-- An item that starts a quest is not the same as an item required DURING it.
+-- requiredSourceItems and sourceItemId are quest uses, not starter items.
+local function IsQuestStarterOnly(entry)
+    local sources = (entry and entry.sources) or {}
+    return sources["database quest starter"]
+        and not (sources["database objective"] or sources["database source item"]
+            or sources["database provided item"] or sources["database spell item"]
+            or sources["active quest objective"] or sources["native bag metadata"])
+end
+
+local function IsInformationalOnly(entry)
+    local sources = (entry and entry.sources) or {}
+    return (sources["database event item reference"] or sources["database quest reward"])
+        and not (sources["database quest starter"] or sources["database objective"]
+            or sources["database source item"] or sources["database provided item"]
+            or sources["database spell item"] or sources["active quest objective"]
+            or sources["native bag metadata"])
+end
+
 local function GetQuestStatus(questID, matchesEntry, activeMap)
     local active = activeMap[questID]
     local record = DB.quests[questID]
-    local sources = matchesEntry and matchesEntry.sources or {}
-    local sourceOnly = sources["database source item"] and not sources["database objective"]
-    if active and sourceOnly then
+    if IsInformationalOnly(matchesEntry) then
+        if (matchesEntry.sources or {})["database quest reward"] then
+            return "QUEST REWARD · FUTURE USE UNKNOWN", "|cff88ccff"
+        end
+        return "QUEST EVENT REFERENCE · REVIEW", "|cffffcc66"
+    end
+    local starterOnly = IsQuestStarterOnly(matchesEntry)
+    if active and starterOnly then
         if IsRepeatableQuest(active) then
             return "REPEATABLE — KEEP FOR NEXT TIME", "|cffffcc66"
         end
-        return "QUEST ACCEPTED · START ITEM NO LONGER NEEDED", "|cff66ccff"
+        return "QUEST STARTED · STARTER ITEM", "|cff66ccff"
     end
     if active then
         if active.isComplete then return "READY TO TURN IN", "|cffffd45c" end
@@ -572,6 +666,7 @@ local function GetQuestStatus(questID, matchesEntry, activeMap)
     if IsQuestCompleted(questID) or (record and record.status == "completed") then
         return "COMPLETED", "|cff66ccff"
     end
+    if starterOnly then return "STARTS QUEST", "|cffffcc66" end
     if record and record.status == "abandoned" then return "FUTURE USE · ABANDONED", "|cffffcc66" end
     local level = GetQuestLevel(questID)
     local trivial = IsTrivialQuest({ questID = questID, level = level })
@@ -612,41 +707,55 @@ local function RecordItem(itemID, itemName, matches)
 end
 
 local function AssessItemRetention(matches, activeMap)
-    local hasUse = false
-    local hasActiveUse = false
-    local hasFutureUse = false
-    local hasRepeatableUse = false
-    local allCompleted = true
+    local confirmed, activeUse, futureUse, repeatableUse = false, false, false, false
+    local activeStarter, uncertainUse, rewardOrigin, allCompleted = false, false, false, true
 
     for questID, entry in pairs(matches) do
-        hasUse = true
-        local active = activeMap[questID]
-        local sources = entry.sources or {}
-        local sourceOnly = sources["database source item"] and not sources["database objective"]
-        local completed = IsQuestCompleted(questID)
-            or (DB.quests[questID] and DB.quests[questID].status == "completed")
-        local repeatable = IsQuestRepeatableByID(questID)
-            or (active and IsRepeatableQuest(active))
-        local stillNeededNow = active and not sourceOnly
-
-        if stillNeededNow then hasActiveUse = true end
-        if repeatable then hasRepeatableUse = true end
-        if (not completed and not (active and sourceOnly)) or repeatable or stillNeededNow then
-            allCompleted = false
-            if not active and not repeatable then hasFutureUse = true end
+        if IsInformationalOnly(entry) then
+            -- Quest rewards and event references do not establish a requirement.
+            if entry.sources["database quest reward"] then rewardOrigin = true end
+            if entry.sources["database event item reference"] then uncertainUse = true end
+        else
+            confirmed = true
+            local active = activeMap[questID]
+            local completed = IsQuestCompleted(questID)
+                or (DB.quests[questID] and DB.quests[questID].status == "completed")
+            local repeatable = IsQuestRepeatableByID(questID)
+                or (active and IsRepeatableQuest(active))
+            local starterOnly = IsQuestStarterOnly(entry)
+            local neededNow = active and not starterOnly
+            if neededNow then activeUse = true end
+            if repeatable then repeatableUse = true end
+            if starterOnly and active and not repeatable and not completed then
+                activeStarter = true
+            end
+            if (not completed and not (active and starterOnly))
+                or repeatable or neededNow then
+                allCompleted = false
+                if not active and not repeatable then futureUse = true end
+            end
         end
     end
 
-    if hasActiveUse then
+    if activeUse then
         return "NEEDED — a current quest uses this item", "|cff33dd77", "needed"
     end
-    if hasRepeatableUse then
+    if repeatableUse then
         return "KEEP — a repeatable quest can use this item", "|cffffcc66", "keep"
     end
-    if hasFutureUse then
+    if futureUse then
         return "KEEP — another quest can use this item", "|cffffcc66", "keep"
     end
-    if hasUse and allCompleted then
+    if uncertainUse then
+        return "REVIEW — referenced by a quest event; item need is unconfirmed", "|cffffcc66", "review"
+    end
+    if rewardOrigin then
+        return "QUEST REWARD — future use is not confirmed", "|cff88ccff", "reward"
+    end
+    if activeStarter then
+        return "QUEST STARTED — no longer needed to accept this quest", "|cff88ccff", "started"
+    end
+    if confirmed and allCompleted then
         return "SAFE TO DELETE — all known quests that use this item are completed", "|cff88ccff", "delete"
     end
     return nil, nil, "unknown"
@@ -690,11 +799,47 @@ local DEFAULT_SETTINGS = {
     showQuestLevels = true,
     showInventoryBreakdown = true,
     showFutureStatusLabels = false,
+    filterByFaction = true,
 }
 local function SettingEnabled(key)
     local value = DB.settings[key]
     if value == nil then return DEFAULT_SETTINGS[key] == true end
     return value == true
+end
+
+-- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
+-- masks include high bits (Skyborne), so WoW's 32-bit bit.band would truncate them.
+-- Comparing one bit at a time preserves the full numeric mask in Lua doubles.
+local function MasksIntersect(a, b)
+    if type(a) ~= "number" or type(b) ~= "number" or a <= 0 or b <= 0 then
+        return false
+    end
+    a, b = math.floor(a), math.floor(b)
+    while a > 0 and b > 0 do
+        if a % 2 == 1 and b % 2 == 1 then return true end
+        a = math.floor(a / 2)
+        b = math.floor(b / 2)
+    end
+    return false
+end
+
+local function QuestMatchesPlayerFaction(questID, activeMap)
+    if not SettingEnabled("filterByFaction") then return true end
+    -- A currently accepted quest is always relevant, even if its DB flags lag.
+    if activeMap and activeMap[questID] then return true end
+
+    local faction = SafeCall(UnitFactionGroup, "player")
+    if faction ~= "Alliance" and faction ~= "Horde" then return true end
+    local enum = LibQuestieDB and LibQuestieDB.Enum
+    local factionMasks = enum and enum.factionRaceMasks
+    local allowedMask = factionMasks and factionMasks[faction]
+    if type(allowedMask) ~= "number" or allowedMask <= 0 then return true end
+
+    local required = SafeCall(QuestDB and QuestDB.requiredRaces, questID)
+    -- Unrestricted (0) or missing data means the quest may be neutral. Don't
+    -- hide unknowns: only filter quests explicitly excluded by the race mask.
+    if type(required) ~= "number" or required <= 0 then return true end
+    return MasksIntersect(required, allowedMask)
 end
 
 local optionsPanel
@@ -713,7 +858,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 347)
+    panel:SetSize(360, 383)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -748,6 +893,7 @@ local function CreateOptionsPanel()
     close:SetScript("OnClick", function() panel:Hide() end)
 
     local entries = {
+        { key = "filterByFaction", label = "Only show my faction quests" },
         { key = "showQuestIDs", label = "Show quest IDs" },
         { key = "showItemIDs", label = "Show item IDs" },
         { key = "showQuestLevels", label = "Show quest levels" },
@@ -867,31 +1013,65 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     if not itemID then return false end
     if decoratedTooltips[tooltip] == itemID then return true end
 
-    -- Don't decorate generic items. During indexing, only verified item
-    -- objectives/source items from ItemDB reverse relations are sufficient.
-    local indexed = dbIndexReady and itemQuestIndex[itemID] or nil
-    local partial = nil
-    if type(indexed) ~= "table" or not next(indexed) then
-        if dbIndexReady then return false end
-        partial = LookupItemDuringIndex(itemID)
-        if not partial then return false end
-    end
-
-    local itemNameResolved = GetItemName(itemID, itemName)
-    local activeMap = GetActiveQuestMap()
+    -- Merge verified quest uses from the index, fast candidates, and native
+    -- active quest data before evaluating KEEP/DELETE. A missing reverse link
+    -- does not prove that an item has no quest uses.
+    local indexed = itemQuestIndex[itemID]
+    local partial = not dbIndexReady
     local matches = {}
-
-    if partial then
-        matches = partial
-    else
+    if type(indexed) == "table" then
         for questID, entry in pairs(indexed) do
-            AddAssociation(matches, questID, "database item use", entry.required)
-            local target = matches[questID]
-            target.sources = entry.sources or target.sources
+            for source in pairs(entry.sources or {}) do
+                AddAssociation(matches, questID, source, entry.required)
+            end
+        end
+    end
+    if partial then
+        local early = LookupItemDuringIndex(itemID)
+        for questID, entry in pairs(early or {}) do
+            for source in pairs(entry.sources or {}) do
+                AddAssociation(matches, questID, source, entry.required)
+            end
         end
     end
 
+    -- ItemDB.startQuest is a direct, documented lookup even if QuestDB's
+    -- startedBy[3] reverse link is absent.
+    local startQuest = tonumber(SafeCall(ItemDB and ItemDB.startQuest, itemID))
+    if startQuest and startQuest > 0 then
+        AddAssociation(matches, startQuest, "database quest starter")
+    end
+    -- Reward links exist on ItemDB rather than QuestDB. Show only provenance.
+    AddRewardProvenance(itemID, matches)
+
+    local itemNameResolved = GetItemName(itemID, itemName)
+    local activeMap = GetActiveQuestMap()
     ActiveObjectiveMatches(itemNameResolved, activeMap, matches)
+
+    -- Native bag quest IDs can recover a server-custom active quest that
+    -- QuestieDB does not include, even if the item has other future DB links.
+    local activeMatched = false
+    for questID in pairs(matches) do
+        if activeMap[questID] then activeMatched = true; break end
+    end
+    if not activeMatched then
+        local native = {}
+        NativeBagQuestInfo(itemID, native)
+        for questID in pairs(native) do
+            if activeMap[questID] then
+                AddAssociation(matches, questID, "native bag metadata")
+            end
+        end
+    end
+
+    -- Filter before displaying quests AND before the retention recommendation.
+    -- An Alliance-only quest must not make a Horde player keep a useless item.
+    for questID in pairs(matches) do
+        if not QuestMatchesPlayerFaction(questID, activeMap) then
+            matches[questID] = nil
+        end
+    end
+    if not next(matches) then return false end
 
     local bags, bank = CountItemInventory(itemID)
     local totalHave = bags + bank
@@ -935,17 +1115,20 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         local level = GetQuestLevel(questID, active)
         local levelText = level and ("Level " .. level) or "Level unknown"
 
-        local sources = entry.sources or {}
-        local sourceOnly = sources["database source item"] and not sources["database objective"]
-        if active and not sourceOnly then
-            activeCount = activeCount + 1
-        elseif IsQuestRepeatableByID(questID) or not IsQuestCompleted(questID) then
-            futureCount = futureCount + 1
-        else
-            completedCount = completedCount + 1
+        -- Informational reward/event links do not count as future quest USES.
+        if not IsInformationalOnly(entry) then
+            if active and not IsQuestStarterOnly(entry) then
+                activeCount = activeCount + 1
+            elseif IsQuestRepeatableByID(questID) or not IsQuestCompleted(questID) then
+                futureCount = futureCount + 1
+            else
+                completedCount = completedCount + 1
+            end
         end
 
-        local nameLine = color .. questName .. "|r"
+        local isRewardOrigin = IsInformationalOnly(entry)
+            and (entry.sources or {})["database quest reward"]
+        local nameLine = color .. (isRewardOrigin and "Reward from: " or "") .. questName .. "|r"
         if SettingEnabled("showQuestLevels") then nameLine = nameLine .. "  (" .. levelText .. ")" end
         tooltip:AddLine(nameLine)
         -- Future status lines are optional; quest names/levels never disappear.
@@ -965,7 +1148,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
         end
 
-        if entry.required and entry.required > 0 then
+        if entry.required and entry.required > 0 and not IsInformationalOnly(entry) then
             tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
         elseif entry.detail then
             tooltip:AddLine("  " .. entry.detail, 0.7, 0.7, 0.7, true)

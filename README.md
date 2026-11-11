@@ -1,38 +1,44 @@
-# Quest Item Tracker
+# Quest Item Tracker — proposed v0.2
 
-A lightweight World of Warcraft Forever addon that helps answer one question when you hover a quest item: **do I still need to keep this?**
+This is the **next test PR** based on the released **v0.1**. `main` and `stable/v0.1` stay unchanged until in-game verification.
 
-## Version
+## Faction and supplied-item fixes
 
-**v0.1 — first public release candidate.** Development and in-game testing took place on PR #1. The internal test ZIP numbers used during development are not the public addon version.
+- **Only show my faction quests** in the minimap settings (on by default). Excludes explicit opposite-faction quests from tooltip lines **and KEEP/SAFE decisions**, but keeps unrestricted, unknown-mask and active quests visible. Supports Forever's high-bit Skyborne race masks.
+- **Crate of Ghost Magnets (15848):** registers its quest-giver-supplied relation to **Ghost-o-plasm Round Up (6134)** through `QuestDB.sourceItemId`.
+- QuestieDB item lookup is **incremental and automatic**, requiring no user setup. First-hover lookups inspect only related quest candidates and active quests, not the entire database.
 
-- **Author:** JamieeLee
-- **Game interface:** 16001 (WoW Forever)
-- **License:** GNU GPL-3.0
-- **Required dependency:** standalone [QuestieDB](https://github.com/Questie/QuestieDB). The full Questie addon is **not** required.
-- **Last known-good pre-release backup:** `baseline/v0.3.4`
+## All QuestieDB item paths audited
 
-## Features
+| Association | QIT behavior |
+| --- | --- |
+| `QuestDB.objectives()[3]` | Collect / turn-in item objective with required count |
+| `QuestDB.objectives()[6][n][3]` | Item used to cast an objective spell |
+| `QuestDB.requiredSourceItems()` | Item needed for a quest, including while active |
+| `QuestDB.sourceItemId()` | Quest-giver-provided tool or item |
+| `QuestDB.startedBy()[3]` | Item that starts a quest |
+| `ItemDB.startQuest()` | Item-start reverse lookup, even if the quest side is absent |
+| `QuestDB.extraObjectives()[n][5]` item references | Related event item shown as **REVIEW** only; not proof it must be kept |
+| Native active item bag questID and exact active objective text | Fallback when QuestieDB has no server-custom quest relation |
+| `QuestDB.specialFlags` repeatable flag | KEEP applies even after a prior completion |
+| `ItemDB.questRewards(itemID)` | On miscellaneous/quest-class items only, shows **Reward from: [quest]** without inferring a required item use; regular equipment rewards remain silent |
+| `ItemDB.relatedQuests()` | Only a candidate list to verify exact fields; never proof by itself |
+| NPC/object/automatic quest starters | Tracked by live quest-log synchronization once accepted; no inventory item is implied |
 
-- Automatically imports active and completed quest information for each character at login, and updates it as quests change.
-- Uses QuestieDB to find known item objectives and required source items for current, future, completed, and repeatable quests.
-- Tells you when an item is **NEEDED**, should be **KEPT** for another quest, or is **SAFE TO DELETE** based on all known database quest uses.
-- Shows item **Have / Need** counts, including your carried bags and the personal bank while open.
-- Adds no QIT tooltip lines to ordinary items with no verified quest use.
-- Supports WoW tooltip APIs and item tooltips created by custom inventory addons.
-- Adds a movable **minimap button** to open saved tooltip preferences. Also available with `/qit options`.
-- Hides technical quest/item IDs and repetitive future-quest status subtitles by default. Quest names and levels remain, and the **GREY QUEST** marker stays visible for trivial quests.
+**Important distinction:** An item used *only to start* a quest may stop being required once the quest is accepted. Items in `requiredSourceItems`, spell objectives, or provided by a quest giver can remain needed during an active quest. Those paths are no longer conflated.
 
-## Installation
+## Retention and safety
 
-Install both `QuestieDB` and `QuestItemTracker` as separate folders under `Interface/AddOns`. Enable both addons in WoW's addon list. No import or initialization command is required.
+QIT never deletes or vendors items. **SAFE TO DELETE** means no remaining consuming use was found in the installed QuestieDB dataset, which can be incomplete; it does not guarantee the item has no server-specific or non-quest use. That recommendation is withheld until the full index finishes. Event-only links are shown as REVIEW, not NEEDED/SAFE.
 
-**Do not delete your existing QIT SavedVariables.** Older data is migrated into per-character history automatically.
+## Testing and dependency
 
-See [addon documentation](QuestItemTracker/README.txt) for the detailed behavior, limitations, and optional developer commands.
+- Automated tests cover both factions, repeatable flags, item starters, spell-use items, required source items, provided quest tools, event references, ordinary/reward-only items, and minimap settings.
+- Existing custom tooltip and SavedVariables migration tests have also been checked locally.
+- **Please test in the WoW Forever client before merging.**
 
-## Safety
+Standalone **QuestieDB** remains required. Full Questie is not.
 
-QIT never sells, deletes, or moves an item. **SAFE TO DELETE** means no remaining use was found in the installed QuestieDB's covered quest-objective/source-item data; server-specific quests, incomplete records, or non-quest uses can still exist.
+## Bloody Map — quest reward provenance
 
-The v0.3.4 baseline remains recoverable in the separate `baseline/v0.3.4` branch, and PR #1 retains the development commits.
+**Bloody Map (item 271745)** is a miscellaneous reward from the Horde quest **Open the Maw (quest 95682)**. The Forever QuestieDB item record has `questRewards = {95682}`; it is not listed as a quest item objective. QIT now displays **Reward from: Open the Maw** and **QUEST REWARD · FUTURE USE UNKNOWN**. It does not incorrectly label the map NEEDED, KEEP, or SAFE TO DELETE from the reward association alone. Faction filtering remains in effect.
