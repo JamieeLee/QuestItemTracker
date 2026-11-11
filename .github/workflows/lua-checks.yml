@@ -24,6 +24,25 @@ jobs:
           lua5.3 tests/faction_and_source_items.lua
           lua5.3 tests/minimap_options.lua
 
+      - name: Validate one changelog and current version entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
+          test -n "$VERSION"
+          test -f CHANGELOG.md
+          COUNT=$(grep -Fc "## [${VERSION}] - " CHANGELOG.md || true)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "CHANGELOG.md must contain exactly one '## [${VERSION}] - DATE' entry for the current addon version"
+            exit 1
+          fi
+          EXTRA=$(find . -type f \( -iname '*changelog*.md' -o -iname '*release*notes*.md' -o -iname '*release*log*.md' -o -iname 'v[0-9]*.md' \) ! -path './CHANGELOG.md' -print)
+          if [ -n "$EXTRA" ]; then
+            echo "All release history belongs in CHANGELOG.md; remove duplicate version/release Markdown files:"
+            echo "$EXTRA"
+            exit 1
+          fi
+
       - name: Build matching installable ZIP
         run: |
           VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)

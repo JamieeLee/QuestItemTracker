@@ -1,44 +1,88 @@
-# Quest Item Tracker — proposed v0.2
+# Quest Item Tracker (QIT)
 
-This is the **next test PR** based on the released **v0.1**. `main` and `stable/v0.1` stay unchanged until in-game verification.
+**Know what to keep.**
 
-## Faction and supplied-item fixes
+Quest Item Tracker is a lightweight addon for **World of Warcraft: Forever** that adds useful quest information directly to item tooltips. Hover an item in your bags to see which quests use it, how many you have, and whether you should keep it.
 
-- **Only show my faction quests** in the minimap settings (on by default). Excludes explicit opposite-faction quests from tooltip lines **and KEEP/SAFE decisions**, but keeps unrestricted, unknown-mask and active quests visible. Supports Forever's high-bit Skyborne race masks.
-- **Crate of Ghost Magnets (15848):** registers its quest-giver-supplied relation to **Ghost-o-plasm Round Up (6134)** through `QuestDB.sourceItemId`.
-- QuestieDB item lookup is **incremental and automatic**, requiring no user setup. First-hover lookups inspect only related quest candidates and active quests, not the entire database.
+QIT uses the standalone **QuestieDB** data addon for quest information. **You do not need to install full Questie.**
 
-## All QuestieDB item paths audited
+## What it does
 
-| Association | QIT behavior |
+- **Quest-aware tooltips:** See associated quest names, levels, item requirements, and current quest status.
+- **Item guidance:** Identify items **NEEDED** for active quests or worth **KEEPING** for later or repeatable quests. Where the available data permits, QIT can mark an item **SAFE TO DELETE**.
+- **More than collection quests:** Recognizes quest starter items, items supplied by quest givers, required source items, spell-use items, and other verified item associations.
+- **Quest reward origins:** For select miscellaneous and quest-category rewards, shows which quest rewarded the item without treating the reward itself as a requirement.
+- **Faction-aware:** Hides quests restricted to the opposite faction by default. Neutral quests and quests already in your log remain visible.
+- **Live item totals:** Counts carried items and includes the personal bank while its window is open.
+- **Automatic quest history:** Tracks active and completed quests separately for each character without manual database imports.
+- **Quiet on ordinary items:** Does not fill tooltips with unrelated information.
+- **Minimap settings:** Open preferences with the movable minimap button or `/qit options`. Settings save automatically.
+
+## How the tooltip works
+
+When QIT identifies a relevant item, it adds a section showing the associated quests and an item recommendation. The recommendation depends on your **current quest log**, **completed quest history**, **faction**, and **QuestieDB's known requirements**.
+
+| Label | Meaning |
 | --- | --- |
-| `QuestDB.objectives()[3]` | Collect / turn-in item objective with required count |
-| `QuestDB.objectives()[6][n][3]` | Item used to cast an objective spell |
-| `QuestDB.requiredSourceItems()` | Item needed for a quest, including while active |
-| `QuestDB.sourceItemId()` | Quest-giver-provided tool or item |
-| `QuestDB.startedBy()[3]` | Item that starts a quest |
-| `ItemDB.startQuest()` | Item-start reverse lookup, even if the quest side is absent |
-| `QuestDB.extraObjectives()[n][5]` item references | Related event item shown as **REVIEW** only; not proof it must be kept |
-| Native active item bag questID and exact active objective text | Fallback when QuestieDB has no server-custom quest relation |
-| `QuestDB.specialFlags` repeatable flag | KEEP applies even after a prior completion |
-| `ItemDB.questRewards(itemID)` | On miscellaneous/quest-class items only, shows **Reward from: [quest]** without inferring a required item use; regular equipment rewards remain silent |
-| `ItemDB.relatedQuests()` | Only a candidate list to verify exact fields; never proof by itself |
-| NPC/object/automatic quest starters | Tracked by live quest-log synchronization once accepted; no inventory item is implied |
+| **NEEDED** | A currently active quest uses the item. |
+| **KEEP** | A known future or repeatable quest can use the item. |
+| **SAFE TO DELETE** | No remaining item requirement was found among the known covered quests, after indexing completes. |
+| **REVIEW** | A quest/event relationship exists, but a required item use could not be confirmed. |
+| **QUEST REWARD** | Shows where an item was obtained; this does not prove it must be kept or discarded. |
 
-**Important distinction:** An item used *only to start* a quest may stop being required once the quest is accepted. Items in `requiredSourceItems`, spell objectives, or provided by a quest giver can remain needed during an active quest. Those paths are no longer conflated.
+QIT **never deletes, sells, or moves your items**. Its guidance is based on the installed QuestieDB data and what the game client exposes, so custom or missing server data and non-quest item uses may not be covered. When unsure, keep the item.
 
-## Retention and safety
+## Requirements
 
-QIT never deletes or vendors items. **SAFE TO DELETE** means no remaining consuming use was found in the installed QuestieDB dataset, which can be incomplete; it does not guarantee the item has no server-specific or non-quest use. That recommendation is withheld until the full index finishes. Event-only links are shown as REVIEW, not NEEDED/SAFE.
+- **World of Warcraft: Forever** (interface `16001`)
+- **[QuestieDB](https://www.curseforge.com/wow/addons/questiedb)** — the standalone data addon, enabled alongside QIT
+- **No full Questie installation required**
 
-## Testing and dependency
+## Installation
 
-- Automated tests cover both factions, repeatable flags, item starters, spell-use items, required source items, provided quest tools, event references, ordinary/reward-only items, and minimap settings.
-- Existing custom tooltip and SavedVariables migration tests have also been checked locally.
-- **Please test in the WoW Forever client before merging.**
+1. Download the Quest Item Tracker addon ZIP.
+2. Extract the **`QuestItemTracker`** folder to your WoW `Interface/AddOns` directory.
+3. Install **`QuestieDB`** as a separate addon in the same directory.
+4. Enable both addons from the WoW AddOns screen.
+5. Log in and hover a quest item. QIT automatically synchronizes your quest history and builds its item index.
 
-Standalone **QuestieDB** remains required. Full Questie is not.
+**Updating from an older QIT version?** Replace the addon files, but keep your existing SavedVariables; QIT preserves and migrates older quest records.
 
-## Bloody Map — quest reward provenance
+## Settings
 
-**Bloody Map (item 271745)** is a miscellaneous reward from the Horde quest **Open the Maw (quest 95682)**. The Forever QuestieDB item record has `questRewards = {95682}`; it is not listed as a quest item objective. QIT now displays **Reward from: Open the Maw** and **QUEST REWARD · FUTURE USE UNKNOWN**. It does not incorrectly label the map NEEDED, KEEP, or SAFE TO DELETE from the reward association alone. Faction filtering remains in effect.
+Click the book icon near the minimap (drag it to reposition) or enter **`/qit options`**.
+
+| Setting | Default |
+| --- | --- |
+| Only show my faction quests | On |
+| Show quest IDs | Off |
+| Show item IDs | Off |
+| Show quest levels | On |
+| Show bag / bank breakdown | On |
+| Show future quest labels | Off |
+
+Quest names stay visible when extra future-quest labels are hidden, and trivial quests keep their **GREY QUEST** marker. Preferences are saved across logins.
+
+## Optional commands
+
+- `/qit options` — open settings
+- `/qit db` — database, index, and tooltip diagnostic information
+- `/qit quests` — currently active quests
+- `/qit completed` — completed quest records
+- `/qit history` — recorded quest history
+- `/qit import` — manually refresh quest data (normally unnecessary)
+
+## Known limitations
+
+- Personal bank counts are available only while the bank is open; remote/account storage is not included.
+- Imported older completed quests do not contain reconstructable original completion dates.
+- Some server-specific quest data may be unavailable or incomplete in QuestieDB.
+- **SAFE TO DELETE** is a database-based recommendation, not a guarantee of no other uses.
+
+## Releases and project
+
+- **[Changelog](CHANGELOG.md)** — the **one** maintained file for all version history and release changes
+- **[GitHub releases](https://github.com/JamieeLee/QuestItemTracker/releases)** — downloadable releases
+- **[Issues and suggestions](https://github.com/JamieeLee/QuestItemTracker/issues)** — report bugs or propose features
+
+Created and maintained by **JamieeLee**. Licensed under **GPL-3.0**.
