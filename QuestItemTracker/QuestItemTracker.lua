@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.1
+-- Quest Item Tracker v0.2
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -424,6 +424,15 @@ local function BuildQuestItemIndex()
                         IndexQuestItem(itemID, questID, "database source item", 1)
                     end
                 end
+
+                -- Quest-giver-provided tools can be required throughout a quest
+                -- without being a collection objective (e.g. item 15848 in
+                -- Ghost-o-plasm Round Up, quest 6134). These are NOT starter
+                -- prerequisites and must remain needed while the quest is active.
+                local providedItem = SafeCall(QuestDB.sourceItemId, questID)
+                if tonumber(providedItem) and tonumber(providedItem) > 0 then
+                    IndexQuestItem(providedItem, questID, "database provided item", 1)
+                end
             end
             cursor = cursor + 1
             dbIndexProcessed = dbIndexProcessed + 1
@@ -441,21 +450,20 @@ local function BuildQuestItemIndex()
 end
 
 -- A fast, per-item lookup while the full reverse index is still warming up.
--- ItemDB.relatedQuests provides *candidate* quest IDs only. Confirm each actual item
--- objective or required source item against QuestDB before showing anything.
+-- ItemDB.relatedQuests supplies candidate IDs, but some provider-given tools
+-- have no reverse link. Always inspect the small active quest log as a fallback.
+-- Every candidate must be confirmed against exact QuestDB item fields.
 -- Never use this partial set to declare an item safe to delete.
 local function LookupItemDuringIndex(itemID)
-    if not QuestieDBReady() or type(ItemDB) ~= "table"
-        or type(ItemDB.relatedQuests) ~= "function" then
-        return nil
-    end
-    local candidateIDs = SafeCall(ItemDB.relatedQuests, itemID)
-    if type(candidateIDs) ~= "table" then return nil end
+    if not QuestieDBReady() then return nil end
 
     local matches = {}
-    for _, rawQuestID in ipairs(candidateIDs) do
-        local questID = tonumber(rawQuestID)
-        if questID and questID > 0 then
+    local candidateIDs = SafeCall(ItemDB and ItemDB.relatedQuests, itemID)
+    local checked = {}
+    local function CheckQuest(questID)
+        questID = tonumber(questID)
+        if not questID or questID <= 0 or checked[questID] then return end
+        checked[questID] = true
             local objectives = SafeCall(QuestDB.objectives, questID)
             local itemObjectives = type(objectives) == "table" and objectives[3] or nil
             if type(itemObjectives) == "table" then
@@ -474,14 +482,22 @@ local function LookupItemDuringIndex(itemID)
                     end
                 end
             end
-        end
+            if tonumber(SafeCall(QuestDB.sourceItemId, questID)) == itemID then
+                AddAssociation(matches, questID, "database provided item", 1)
+            end
     end
+    if type(candidateIDs) == "table" then
+        for _, questID in ipairs(candidateIDs) do CheckQuest(questID) end
+    end
+    -- The player may already be using a supplied item even when ItemDB
+    -- relatedQuests has not registered its reverse association.
+    local active = GetActiveQuestMap()
+    for questID in pairs(active) do CheckQuest(questID) end
     return next(matches) and matches or nil
 end
 
--- Item membership comes exclusively from QuestDB item objectives and requiredSourceItems.
--- This intentionally excludes generic related-quest and quest-reward links: those do not
--- prove that the player must keep or turn in the item.
+-- Item membership is confirmed from QuestDB objectives, requiredSourceItems,
+-- and quest-giver-provided sourceItemId, not broad related/reward metadata.
 
 local function NativeBagQuestInfo(itemID, matches)
     if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function"
@@ -690,11 +706,47 @@ local DEFAULT_SETTINGS = {
     showQuestLevels = true,
     showInventoryBreakdown = true,
     showFutureStatusLabels = false,
+    filterByFaction = true,
 }
 local function SettingEnabled(key)
     local value = DB.settings[key]
     if value == nil then return DEFAULT_SETTINGS[key] == true end
     return value == true
+end
+
+-- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
+-- masks include high bits (Skyborne), so WoW's 32-bit bit.band would truncate them.
+-- Comparing one bit at a time preserves the full numeric mask in Lua doubles.
+local function MasksIntersect(a, b)
+    if type(a) ~= "number" or type(b) ~= "number" or a <= 0 or b <= 0 then
+        return false
+    end
+    a, b = math.floor(a), math.floor(b)
+    while a > 0 and b > 0 do
+        if a % 2 == 1 and b % 2 == 1 then return true end
+        a = math.floor(a / 2)
+        b = math.floor(b / 2)
+    end
+    return false
+end
+
+local function QuestMatchesPlayerFaction(questID, activeMap)
+    if not SettingEnabled("filterByFaction") then return true end
+    -- A currently accepted quest is always relevant, even if its DB flags lag.
+    if activeMap and activeMap[questID] then return true end
+
+    local faction = SafeCall(UnitFactionGroup, "player")
+    if faction ~= "Alliance" and faction ~= "Horde" then return true end
+    local enum = LibQuestieDB and LibQuestieDB.Enum
+    local factionMasks = enum and enum.factionRaceMasks
+    local allowedMask = factionMasks and factionMasks[faction]
+    if type(allowedMask) ~= "number" or allowedMask <= 0 then return true end
+
+    local required = SafeCall(QuestDB and QuestDB.requiredRaces, questID)
+    -- Unrestricted (0) or missing data means the quest may be neutral. Don't
+    -- hide unknowns: only filter quests explicitly excluded by the race mask.
+    if type(required) ~= "number" or required <= 0 then return true end
+    return MasksIntersect(required, allowedMask)
 end
 
 local optionsPanel
@@ -713,7 +765,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 347)
+    panel:SetSize(360, 383)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -748,6 +800,7 @@ local function CreateOptionsPanel()
     close:SetScript("OnClick", function() panel:Hide() end)
 
     local entries = {
+        { key = "filterByFaction", label = "Only show my faction quests" },
         { key = "showQuestIDs", label = "Show quest IDs" },
         { key = "showItemIDs", label = "Show item IDs" },
         { key = "showQuestLevels", label = "Show quest levels" },
@@ -892,6 +945,15 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
 
     ActiveObjectiveMatches(itemNameResolved, activeMap, matches)
+
+    -- Filter before displaying quests AND before the retention recommendation.
+    -- An Alliance-only quest must not make a Horde player keep a useless item.
+    for questID in pairs(matches) do
+        if not QuestMatchesPlayerFaction(questID, activeMap) then
+            matches[questID] = nil
+        end
+    end
+    if not next(matches) then return false end
 
     local bags, bank = CountItemInventory(itemID)
     local totalHave = bags + bank
