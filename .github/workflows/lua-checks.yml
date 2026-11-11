@@ -1,0 +1,25 @@
+name: QIT Lua checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lua:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.3
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua5.3
+      - name: Parse addon source and tests
+        run: |
+          luac5.3 -p QuestItemTracker/QuestItemTracker.lua
+          luac5.3 -p tests/faction_and_source_items.lua
+          luac5.3 -p tests/minimap_options.lua
+      - name: Run mock Forever compatibility tests
+        run: |
+          lua5.3 tests/faction_and_source_items.lua
+          lua5.3 tests/minimap_options.lua
