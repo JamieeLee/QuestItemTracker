@@ -1,37 +1,38 @@
 # Quest Item Tracker
 
-A lightweight World of Warcraft Forever addon that answers one question when you hover a quest item: **do I need to keep this?**
+A lightweight World of Warcraft Forever addon that helps answer one question when you hover a quest item: **do I still need to keep this?**
 
-## Current development
+## Version
 
-- **Last known-good baseline:** v0.3.4 (`baseline/v0.3.4`)
-- **Current proposal:** v0.4.3 (`feature/automatic-quest-sync`)
-- **Game interface:** 16001
+**v0.1 — first public release candidate.** Development and in-game testing took place on PR #1. The internal test ZIP numbers used during development are not the public addon version.
+
+- **Author:** JamieeLee
+- **Game interface:** 16001 (WoW Forever)
 - **License:** GNU GPL-3.0
-- **Required dependency:** standalone QuestieDB for Forever; enable both addons in WoW's AddOns list. The full Questie tracker is not required.
+- **Required dependency:** standalone [QuestieDB](https://github.com/Questie/QuestieDB). The full Questie addon is **not** required.
+- **Last known-good pre-release backup:** `baseline/v0.3.4`
 
-## v0.4.3 proposal
+## Features
 
-- Automatically imports the current quest log and completed quest IDs at login.
-- Automatically refreshes quest state as quests are accepted, completed, abandoned, or the quest log changes.
-- Builds the QuestieDB item-to-quest index automatically in small background batches.
-- Only decorates items listed as actual quest item objectives or required source items; ordinary items are ignored.
-- Shows all known quests that use an item, quest status, item counts, and the final keep/delete recommendation.
-- Counts carried bags and the personal bank while it is open.
-- Preserves v0.3.x SavedVariables and migrates records into per-character state.
-- Provides a draggable minimap settings button with opt-in technical IDs and other tooltip preferences.
+- Automatically imports active and completed quest information for each character at login, and updates it as quests change.
+- Uses QuestieDB to find known item objectives and required source items for current, future, completed, and repeatable quests.
+- Tells you when an item is **NEEDED**, should be **KEPT** for another quest, or is **SAFE TO DELETE** based on all known database quest uses.
+- Shows item **Have / Need** counts, including your carried bags and the personal bank while open.
+- Adds no QIT tooltip lines to ordinary items with no verified quest use.
+- Supports WoW tooltip APIs and item tooltips created by custom inventory addons.
+- Adds a movable **minimap button** to open saved tooltip preferences. Also available with `/qit options`.
+- Hides technical quest/item IDs and repetitive future-quest status subtitles by default. Quest names and levels remain, and the **GREY QUEST** marker stays visible for trivial quests.
 
-See [`QuestItemTracker/README.txt`](QuestItemTracker/README.txt) for installation, dependency, tooltip behavior, limitations, and developer diagnostics.
+## Installation
 
-The v0.4.3 branch is a proposal for testing. `main` remains the v0.3.4 baseline until the pull request is reviewed and accepted.
-## v0.4.3 tooltip compatibility update
+Install both `QuestieDB` and `QuestItemTracker` as separate folders under `Interface/AddOns`. Enable both addons in WoW's addon list. No import or initialization command is required.
 
-Supports typed tooltip item data when a custom bag UI does not provide `GetItem()`, and registers legacy callbacks and secure item setters as supplementary paths. QuestieDB candidate relations may provide verified item uses before the incremental index is finished, but deletion guidance waits for full indexing.
+**Do not delete your existing QIT SavedVariables.** Older data is migrated into per-character history automatically.
 
-## Minimap settings
+See [addon documentation](QuestItemTracker/README.txt) for the detailed behavior, limitations, and optional developer commands.
 
-Click the Quest Item Tracker minimap button (drag to reposition), or type `/qit options`. Quest and item IDs are hidden by default, while quest levels and bag/bank breakdown remain visible. Preferences save automatically; there are no setup commands required for normal tracking.
+## Safety
 
-## v0.4.3 compact quest details
+QIT never sells, deletes, or moves an item. **SAFE TO DELETE** means no remaining use was found in the installed QuestieDB's covered quest-objective/source-item data; server-specific quests, incomplete records, or non-quest uses can still exist.
 
-The minimap settings now include **Show future quest labels** (off by default). This hides repeated FUTURE QUEST / FUTURE USE subtitle rows while preserving quest names, levels, and the GREY QUEST marker for trivial quests. Turning it on restores the detailed labels.
+The v0.3.4 baseline remains recoverable in the separate `baseline/v0.3.4` branch, and PR #1 retains the development commits.

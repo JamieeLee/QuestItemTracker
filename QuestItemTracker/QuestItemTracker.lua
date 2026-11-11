@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.4.3
+-- Quest Item Tracker v0.1
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
