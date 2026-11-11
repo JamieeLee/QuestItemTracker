@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Quest Item Tracker
-## Notes: Requires standalone QuestieDB (enable both addons). Automatically tracks which quest items to keep or delete.
+## Notes: Requires QuestieDB. Track quest items; click the minimap button to customize tooltips.
 ## Author: JamieeLee
-## Version: 0.4.1
+## Version: 0.4.2
 ## Dependencies: QuestieDB
 ## SavedVariables: QuestItemTrackerDB
 

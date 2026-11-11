@@ -1,4 +1,4 @@
-Quest Item Tracker v0.4.1 — WoW: Forever
+Quest Item Tracker v0.4.2 — WoW: Forever
 
 PURPOSE
 Hover a quest item in your bags or personal bank and quickly see:
@@ -34,7 +34,7 @@ TOOLTIP BEHAVIOR
 - Repeatable quest use: KEEP, even if it has been completed before.
 - A source item used only to start a quest is no longer required by that quest after it is accepted; other quest uses are still checked.
 - Every known consuming quest completed and no repeatable use remains: SAFE TO DELETE.
-- Each associated quest is listed by name, level, status, and Have / Need information where available. Technical IDs stay in developer diagnostics, not the item tooltip.
+- Each quest is listed by name, level, status, and Have / Need; quest and item IDs are hidden by default, but can be enabled in settings.
 - Quest item counts include backpack/carried bags and the personal bank while the bank window is open.
 
 IMPORTANT SAFETY NOTES
@@ -73,3 +73,10 @@ PATCH 0.4.1 — TOOLTIP COMPATIBILITY
 - Never marks an item safe to delete until the complete quest-item index exists.
 - Fixes QUEST_ACCEPTED argument handling (quest-log index versus quest ID).
 - Developers can inspect hook availability and database indexing via /qit db.
+
+PATCH 0.4.2 — MINIMAP SETTINGS
+- Added a draggable minimap button. Left-click to open Quest Item Tracker settings.
+- /qit or /qit options opens the same settings panel.
+- Toggle quest IDs (off), item IDs (off), quest levels (on), and bag/bank breakdown (on).
+- Settings save across characters on the account; quest history remains character-specific.
+- Quest and item IDs remain available to developer commands. Retention logic is unchanged.
