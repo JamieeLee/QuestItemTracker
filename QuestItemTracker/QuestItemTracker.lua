@@ -1138,17 +1138,17 @@ local function CreateOptionsPanel()
             help = "Hide extra number-only details, such as ItemID and IconID, "
                 .. "that other addons put on item tooltips. "
                 .. "This is off by default and does not change the other addons' settings "
-                .. "or hide IDs shown by QIT.",
+                .. "or hide IDs shown by QITF.",
         },
         {
-            key = "showQuestIDs", label = "Show QIT quest IDs", y = -190,
-            help = "Show the identifying number for each quest listed by QIT. "
+            key = "showQuestIDs", label = "Show QITF quest IDs", y = -190,
+            help = "Show the identifying number for each quest listed by QITF. "
                 .. "For example, you can use a quest ID to identify a particular quest "
                 .. "when asking for help. This does not control IDs from other addons.",
         },
         {
-            key = "showItemIDs", label = "Show QIT item IDs", y = -226,
-            help = "Show the item's identifying number inside QIT's section of "
+            key = "showItemIDs", label = "Show QITF item IDs", y = -226,
+            help = "Show the item's identifying number inside QITF's section of "
                 .. "the tooltip. This can help when reporting an item problem. "
                 .. "Other addons' ItemID lines are controlled by the option above.",
         },
@@ -1161,7 +1161,7 @@ local function CreateOptionsPanel()
             key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321,
             help = "Show how many copies of an item are in your bags and bank, "
                 .. "next to the total you have. Turn this off to see just the total; "
-                .. "QIT still counts your items.",
+                .. "QITF still counts your items.",
         },
         {
             key = "showFutureStatusLabels", label = "Show future quest labels", y = -357,
