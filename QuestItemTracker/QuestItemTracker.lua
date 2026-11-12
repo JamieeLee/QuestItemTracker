@@ -916,6 +916,7 @@ local optionsPanel
 local minimapButton
 local questieDBStatusLight
 local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
+local QIT_STATUS_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\StatusCircle"
 
 local function SetSolidColor(texture, r, g, b, a)
     if type(texture.SetColorTexture) == "function" then
@@ -1011,13 +1012,16 @@ local function QuestieDBStatus()
 end
 
 local function UpdateQuestieDBStatusLight()
-    if not questieDBStatusLight or
-        type(questieDBStatusLight.label.SetTextColor) ~= "function" then return end
+    if not questieDBStatusLight then return end
+    local dot = questieDBStatusLight.dot
+    if not dot or type(dot.SetVertexColor) ~= "function" then return end
     local ready = QuestieDBStatus()
-    questieDBStatusLight.label:SetTextColor(
-        ready and 0.28 or 0.98,
-        ready and 0.90 or 0.26,
-        ready and 0.40 or 0.24,
+    -- This is a real circular texture with a transparent background. Font
+    -- symbols like "●" can become empty squares in Forever's UI font.
+    dot:SetVertexColor(
+        ready and 0.24 or 1,
+        ready and 0.92 or 0.28,
+        ready and 0.45 or 0.28,
         1
     )
 end
@@ -1073,10 +1077,11 @@ local function CreateOptionsPanel()
     statusLight:SetSize(20, 20)
     statusLight:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -19, -52)
     statusLight:EnableMouse(true)
-    local lightGlyph = statusLight:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    lightGlyph:SetPoint("CENTER", statusLight, "CENTER", 0, 0)
-    lightGlyph:SetText("●")
-    statusLight.label = lightGlyph
+    local dot = statusLight:CreateTexture(nil, "ARTWORK")
+    dot:SetSize(18, 18)
+    dot:SetPoint("CENTER", statusLight, "CENTER", 0, 0)
+    dot:SetTexture(QIT_STATUS_TEXTURE)
+    statusLight.dot = dot
     questieDBStatusLight = statusLight
     statusLight:SetScript("OnEnter", function(self)
         if not GameTooltip or type(GameTooltip.SetOwner) ~= "function"
