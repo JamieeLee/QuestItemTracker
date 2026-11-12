@@ -13,6 +13,8 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Refresh the settings panel with compact ID and details sections; preserve one source-of-truth changelog and the automatic release pipeline.
 - Add friendly hover explanations to all seven settings, including examples of when to use them and what they do not change. The clickable hover area covers each setting's label, keeping the panel itself tidy.
 - Remember the dragged settings-panel position in QIT's account-wide SavedVariables and restore it after `/reload` or restarting WoW. Fresh installs keep the original centered position, and **Reset defaults** recenters the panel.
+- Add a tiny **green/red QuestieDB status light** to the settings menu with plain-English hover help: green means QuestieDB is ready; red explains whether it is missing, disabled, not loaded, or incompatible.
+- Let QIT's settings panel load without QuestieDB via WoW's `OptionalDeps` so people who install the GitHub ZIP without QuestieDB can see the warning. QuestieDB **remains required** in CurseForge metadata so the CurseForge app installs it automatically; no quest-matching or retention logic is changed.
 
 ## [0.4] - 2026-11-12
 
