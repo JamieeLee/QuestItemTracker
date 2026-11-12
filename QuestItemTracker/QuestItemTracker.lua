@@ -1008,14 +1008,52 @@ local function CreateOptionsPanel()
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
     close:SetScript("OnClick", function() panel:Hide() end)
 
+    -- Keep the menu labels short. Hover over any option to understand its
+    -- effect in everyday language; the item tooltip itself stays uncluttered.
     local entries = {
-        { key = "filterByFaction", label = "Only show my faction quests", y = -87 },
-        { key = "suppressExternalIDs", label = "Hide IDs from other addons", y = -154 },
-        { key = "showQuestIDs", label = "Show QIT quest IDs", y = -190 },
-        { key = "showItemIDs", label = "Show QIT item IDs", y = -226 },
-        { key = "showQuestLevels", label = "Show quest levels", y = -285 },
-        { key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321 },
-        { key = "showFutureStatusLabels", label = "Show future quest labels", y = -357 },
+        {
+            key = "filterByFaction", label = "Only show my faction quests", y = -87,
+            help = "Show quests meant for your faction, along with neutral quests. "
+                .. "Quests marked for the opposite faction are hidden. "
+                .. "Quests you're already working on still appear.",
+        },
+        {
+            key = "suppressExternalIDs", label = "Hide IDs from other addons", y = -154,
+            help = "Hide extra number-only details, such as ItemID and IconID, "
+                .. "that other addons put on item tooltips. "
+                .. "This is off by default and does not change the other addons' settings "
+                .. "or hide IDs shown by QIT.",
+        },
+        {
+            key = "showQuestIDs", label = "Show QIT quest IDs", y = -190,
+            help = "Show the identifying number for each quest listed by QIT. "
+                .. "For example, you can use a quest ID to identify a particular quest "
+                .. "when asking for help. This does not control IDs from other addons.",
+        },
+        {
+            key = "showItemIDs", label = "Show QIT item IDs", y = -226,
+            help = "Show the item's identifying number inside QIT's section of "
+                .. "the tooltip. This can help when reporting an item problem. "
+                .. "Other addons' ItemID lines are controlled by the option above.",
+        },
+        {
+            key = "showQuestLevels", label = "Show quest levels", y = -285,
+            help = "Show each quest's level next to its name, such as Level 60. "
+                .. "Turn this off for shorter quest names without changing which quests appear.",
+        },
+        {
+            key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321,
+            help = "Show how many copies of an item are in your bags and bank, "
+                .. "next to the total you have. Turn this off to see just the total; "
+                .. "QIT still counts your items.",
+        },
+        {
+            key = "showFutureStatusLabels", label = "Show future quest labels", y = -357,
+            help = "Add extra explanations for quests you could do later, "
+                .. "such as FUTURE QUEST, plus a summary when an item has only future uses. "
+                .. "Leaving this off keeps the tooltip shorter without removing "
+                .. "important KEEP or NEEDED advice.",
+        },
     }
     local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
@@ -1031,6 +1069,26 @@ local function CreateOptionsPanel()
         checkbox:SetSize(25, 25)
         checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, entry.y)
         checkbox:SetChecked(SettingEnabled(entry.key))
+        -- Expand the checkbox's mouse area across its text, so hovering
+        -- anywhere on the option shows its help and clicking text works too.
+        if type(checkbox.SetHitRectInsets) == "function" then
+            checkbox:SetHitRectInsets(0, -255, 0, 0)
+        end
+        checkbox:SetScript("OnEnter", function(self)
+            if not GameTooltip or type(GameTooltip.SetOwner) ~= "function"
+                or type(GameTooltip.SetText) ~= "function"
+                or type(GameTooltip.AddLine) ~= "function" then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(entry.label, 0.4, 0.78, 1)
+            GameTooltip:AddLine(entry.help, 0.95, 0.95, 0.95, true)
+            GameTooltip:Show()
+        end)
+        checkbox:SetScript("OnLeave", function(self)
+            if GameTooltip and type(GameTooltip.GetOwner) == "function"
+                and GameTooltip:GetOwner() == self then
+                GameTooltip:Hide()
+            end
+        end)
         local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
         label:SetText(entry.label)
