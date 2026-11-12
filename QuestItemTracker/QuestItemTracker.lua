@@ -1,4 +1,4 @@
--- Quest Item Tracker v0.2
+-- Quest Item Tracker Forever v0.2
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -883,7 +883,7 @@ local function CreateOptionsPanel()
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
-    title:SetText("Quest Item Tracker")
+    title:SetText("Quest Item Tracker Forever")
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
@@ -979,7 +979,7 @@ local function CreateMinimapButton()
     button:SetScript("OnEnter", function(self)
         if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Quest Item Tracker", 0.4, 0.8, 1)
+        GameTooltip:AddLine("Quest Item Tracker Forever", 0.4, 0.8, 1)
         GameTooltip:AddLine("Click: tooltip settings", 1, 1, 1)
         GameTooltip:AddLine("Drag: move minimap button", 0.7, 0.7, 0.7)
         GameTooltip:Show()
@@ -1086,7 +1086,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     decoratedTooltips[tooltip] = itemID
 
     tooltip:AddLine(" ")
-    tooltip:AddLine("|cff66ccffQuest Item Tracker|r")
+    tooltip:AddLine("|cff66ccffQuest Item Tracker Forever|r")
     if SettingEnabled("showItemIDs") then
         tooltip:AddLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
     end
