@@ -916,6 +916,7 @@ local optionsPanel
 local minimapButton
 local questieDBStatusLight
 local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
+local QIT_BADGE_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITForeverBadge"
 local QIT_STATUS_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\StatusCircle"
 
 local function SetSolidColor(texture, r, g, b, a)
@@ -1314,23 +1315,13 @@ local function CreateMinimapButton()
     button:RegisterForDrag("LeftButton")
     button:SetMovable(true)
 
-    -- Use the same classic minimap button artwork geometry as LibDBIcon.
-    -- This keeps the book visually aligned with neighboring addon buttons.
-    local background = button:CreateTexture(nil, "BACKGROUND")
-    background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-    background:SetSize(20, 20)
-    background:SetPoint("TOPLEFT", button, "TOPLEFT", 7, -5)
-
+    -- The approved QIT / FOREVER badge has its own gold rim and red ribbon.
+    -- Do not add the default tracking border on top: double borders obscure
+    -- the small lettering. Keep the BigWigs-style button placement and drag.
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
-    icon:SetPoint("TOPLEFT", button, "TOPLEFT", 7, -6)
-    icon:SetTexture(QIT_ICON_TEXTURE)
-    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0.05, 0.95, 0.05, 0.95) end
-
-    local border = button:CreateTexture(nil, "OVERLAY")
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetSize(53, 53)
-    border:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    icon:SetSize(30, 30)
+    icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+    icon:SetTexture(QIT_BADGE_TEXTURE)
 
     button:SetScript("OnClick", ToggleOptionsPanel)
     button:SetScript("OnEnter", function(self)
