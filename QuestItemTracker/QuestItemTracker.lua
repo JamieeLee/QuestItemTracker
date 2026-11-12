@@ -1044,32 +1044,50 @@ local function CreateOptionsPanel()
         SaveOptionsPanelPosition(self)
     end)
 
+    -- Restrained Warcraft-style frame: warm charcoal, aged-gold trim,
+    -- and a quiet title band. Keep native WoW controls (checkboxes, reset,
+    -- close) so other UI packs can still restyle their normal templates.
     local border = panel:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
-    SetSolidColor(border, 0.34, 0.43, 0.55, 0.96)
+    SetSolidColor(border, 0.42, 0.33, 0.20, 0.98)
     local background = panel:CreateTexture(nil, "BORDER")
     background:SetPoint("TOPLEFT", panel, "TOPLEFT", 2, -2)
     background:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -2, 2)
-    SetSolidColor(background, 0.055, 0.075, 0.11, 0.98)
+    SetSolidColor(background, 0.055, 0.052, 0.047, 0.98)
+
+    local headerBand = panel:CreateTexture(nil, "ARTWORK")
+    headerBand:SetPoint("TOPLEFT", panel, "TOPLEFT", 3, -3)
+    headerBand:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -3)
+    headerBand:SetHeight(43)
+    SetSolidColor(headerBand, 0.125, 0.101, 0.072, 0.96)
+
     local stripe = panel:CreateTexture(nil, "ARTWORK")
     stripe:SetHeight(2)
     stripe:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -45)
     stripe:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, -45)
-    SetSolidColor(stripe, 0.38, 0.7, 0.94, 1)
+    SetSolidColor(stripe, 0.66, 0.48, 0.25, 0.94)
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
     title:SetText("Quest Item Tracker Forever")
+    if type(title.SetTextColor) == "function" then
+        title:SetTextColor(1, 0.82, 0.41, 1)
+    end
     local version = AddonVersion()
     if version then
         local versionLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -2)
         versionLabel:SetText("v" .. version)
-        versionLabel:SetTextColor(0.55, 0.63, 0.72, 1)
+        if type(versionLabel.SetTextColor) == "function" then
+            versionLabel:SetTextColor(0.62, 0.58, 0.49, 1)
+        end
     end
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
+    if type(subTitle.SetTextColor) == "function" then
+        subTitle:SetTextColor(0.79, 0.75, 0.67, 1)
+    end
 
     -- Only a small green/red dot, not another label or block in the menu.
     -- Hovering it explains whether QuestieDB is working and what to fix.
@@ -1155,11 +1173,11 @@ local function CreateOptionsPanel()
     local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
     idsHeading:SetText("ID DISPLAY")
-    if type(idsHeading.SetTextColor) == "function" then idsHeading:SetTextColor(0.4, 0.78, 1, 1) end
+    if type(idsHeading.SetTextColor) == "function" then idsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
     local detailsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     detailsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -263)
     detailsHeading:SetText("OTHER DETAILS")
-    if type(detailsHeading.SetTextColor) == "function" then detailsHeading:SetTextColor(0.4, 0.78, 1, 1) end
+    if type(detailsHeading.SetTextColor) == "function" then detailsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
     local checkboxes = {}
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
@@ -1176,7 +1194,7 @@ local function CreateOptionsPanel()
                 or type(GameTooltip.SetText) ~= "function"
                 or type(GameTooltip.AddLine) ~= "function" then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(entry.label, 0.4, 0.78, 1)
+            GameTooltip:SetText(entry.label, 0.92, 0.77, 0.49)
             GameTooltip:AddLine(entry.help, 0.95, 0.95, 0.95, true)
             GameTooltip:Show()
         end)
@@ -1211,6 +1229,9 @@ local function CreateOptionsPanel()
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -17, 23)
     hint:SetText("Changes apply on next hover")
+    if type(hint.SetTextColor) == "function" then
+        hint:SetTextColor(0.63, 0.60, 0.54, 1)
+    end
     panel:SetScript("OnShow", function()
         UpdateQuestieDBStatusLight()
         for _, row in ipairs(checkboxes) do
