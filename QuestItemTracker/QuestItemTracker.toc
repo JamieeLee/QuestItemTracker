@@ -3,7 +3,7 @@
 ## Notes: Requires QuestieDB. Track quest items; click the minimap button to customize tooltips.
 ## Author: JamieeLee
 ## Version: 0.5
-## Dependencies: QuestieDB
+## OptionalDeps: QuestieDB
 ## IconTexture: Interface\AddOns\QuestItemTracker\Media\QITIcon
 ## SavedVariables: QuestItemTrackerDB
 
