@@ -1259,6 +1259,12 @@ local MINIMAP_EDGE_PADDING = 5
 local MINIMAP_SAVE_RADIUS = 80
 
 local function MinimapDirection()
+    -- The finalized drag direction is stored as a single SavedVariables
+    -- angle. Keep the historical X/Y fields as a fallback for older installs.
+    local angle = tonumber(DB.settings.minimapAngle)
+    if angle and angle == angle and math.abs(angle) <= 100000 then
+        return math.cos(angle), math.sin(angle)
+    end
     local x = tonumber(DB.settings.minimapX) or 75
     local y = tonumber(DB.settings.minimapY) or -28
     local length = math.sqrt(x * x + y * y)
@@ -1298,10 +1304,27 @@ local function SaveMinimapCursorDirection()
     local dx, dy = mouseX / scale - centerX, mouseY / scale - centerY
     local distance = math.sqrt(dx * dx + dy * dy)
     if distance < 0.001 then return false end
+    -- While dragging, keep the existing smooth rim movement unchanged.
+    -- The final angle is committed separately on mouse release.
     DB.settings.minimapX = dx / distance * MINIMAP_SAVE_RADIUS
     DB.settings.minimapY = dy / distance * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapAngle = nil
     PlaceMinimapButton()
     return true
+end
+
+local function FinishMinimapDrag(button)
+    if not button.qitDragging then return end
+    button.qitDragging = false
+    button:SetScript("OnUpdate", nil)
+    -- The last cursor event may have occurred between update frames.
+    SaveMinimapCursorDirection()
+    -- Commit a compact scalar to SavedVariables in addition to legacy X/Y,
+    -- which are still accepted for players upgrading from earlier versions.
+    local nx, ny = MinimapDirection()
+    DB.settings.minimapAngle = math.atan2 and math.atan2(ny, nx)
+        or math.atan(ny, nx)
+    PlaceMinimapButton()
 end
 
 local function CreateMinimapButton()
@@ -1336,12 +1359,14 @@ local function CreateMinimapButton()
     button:SetScript("OnDragStart", function(self)
         -- Orbit around the minimap as the cursor moves, rather than briefly
         -- dragging the button through the middle and snapping it back.
+        self.qitDragging = true
         self:SetScript("OnUpdate", SaveMinimapCursorDirection)
     end)
-    button:SetScript("OnDragStop", function(self)
-        self:SetScript("OnUpdate", nil)
-        SaveMinimapCursorDirection()
-        PlaceMinimapButton()
+    button:SetScript("OnDragStop", FinishMinimapDrag)
+    -- Some client/UI combinations send OnMouseUp but not OnDragStop.
+    -- A plain click is unaffected because qitDragging is only set by drag.
+    button:SetScript("OnMouseUp", function(self, mouseButton)
+        if mouseButton == "LeftButton" then FinishMinimapDrag(self) end
     end)
     minimapButton = button
     PlaceMinimapButton()
