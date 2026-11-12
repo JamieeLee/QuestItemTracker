@@ -148,6 +148,12 @@ button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'minimap button did not open settings')
+local initialPoint=panel.points[#panel.points]
+assert(initialPoint and initialPoint[1]=='CENTER' and initialPoint[2]==UIParent and
+    initialPoint[3]=='CENTER' and initialPoint[4]==0 and initialPoint[5]==45,
+    'new installs must use the original centered window position')
+assert(QuestItemTrackerDB.settings.optionsPanelPosition==nil,
+    'opening a fresh panel must not create a saved position')
 local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
@@ -298,4 +304,59 @@ button.scripts.OnDragStop(button)
 assert(type(QuestItemTrackerDB.settings.minimapX)=='number','minimap position not saved')
 assert(type(QuestItemTrackerDB.settings.minimapY)=='number','minimap position not saved')
 assert(not button.moving,'drag left the button in moving state')
+
+-- Unlike closing/reopening one Frame, a UI reload recreates the frame.
+-- Preserve only account-wide SavedVariables, then load addon Lua again.
+panel.cx, panel.cy = 895, 625
+panel.scripts.OnDragStart(panel)
+panel.scripts.OnDragStop(panel)
+local position=QuestItemTrackerDB.settings.optionsPanelPosition
+assert(position and position.x==325 and position.y==165,
+  'dragging must save panel center offsets relative to UIParent')
+assert(not panel.moving,'settings drag left the frame in moving state')
+panel:Hide()
+panel:Show()
+assert(panel:IsShown() and QuestItemTrackerDB.settings.optionsPanelPosition.x==325,
+  'closing and reopening must not lose saved positioning')
+
+local beforeReload=#frames
+assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+local reloadMain,reloadButton
+for i=beforeReload+1,#frames do
+  local f=frames[i]
+  if f.events.PLAYER_LOGIN then reloadMain=f end
+end
+assert(reloadMain,'addon reload did not create login handler')
+reloadMain.scripts.OnEvent(reloadMain,'PLAYER_LOGIN')
+for i=beforeReload+1,#frames do
+  local f=frames[i]
+  if f.name=='QITMinimapButton' then reloadButton=f end
+end
+assert(reloadButton,'minimap button missing after UI reload')
+reloadButton.scripts.OnClick(reloadButton,'LeftButton')
+local restoredPanel
+for i=beforeReload+1,#frames do
+  local f=frames[i]
+  if f.name=='QITOptionsPanel' then restoredPanel=f end
+end
+assert(restoredPanel and restoredPanel:IsShown(),'settings did not open after UI reload')
+local restoredPoint=restoredPanel.points[#restoredPanel.points]
+assert(restoredPoint and restoredPoint[1]=='CENTER' and restoredPoint[2]==UIParent and
+    restoredPoint[3]=='CENTER' and restoredPoint[4]==325 and restoredPoint[5]==165,
+    'saved panel position was not applied after a real addon reload')
+
+-- Reset defaults also clears the stored position and centers the live panel.
+local reloadedReset
+for i=beforeReload+1,#frames do
+  local f=frames[i]
+  if f.kind=='Button' and f.text=='Reset defaults' and f.parent==restoredPanel then
+    reloadedReset=f
+  end
+end
+assert(reloadedReset,'reset control missing after reload')
+reloadedReset.scripts.OnClick(reloadedReset)
+local defaultPoint=restoredPanel.points[#restoredPanel.points]
+assert(QuestItemTrackerDB.settings.optionsPanelPosition==nil and
+    defaultPoint and defaultPoint[4]==0 and defaultPoint[5]==45,
+    'reset defaults must clear saved panel position and recenter the window')
 print('MINIMAP SETTINGS TESTS PASSED')
