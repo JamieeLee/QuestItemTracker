@@ -1310,11 +1310,13 @@ local function SaveMinimapCursorDirection()
     local dx, dy = mouseX / scale - centerX, mouseY / scale - centerY
     local distance = math.sqrt(dx * dx + dy * dy)
     if distance < 0.001 then return false end
-    -- While dragging, keep the existing smooth rim movement unchanged.
-    -- The finalized position is committed separately on mouse release.
-    DB.settings.minimapX = dx / distance * MINIMAP_SAVE_RADIUS
-    DB.settings.minimapY = dy / distance * MINIMAP_SAVE_RADIUS
-    DB.settings.minimapPosition = nil
+    -- Persist *while* dragging, not only on drag-stop. Some UI clients
+    -- can miss a final release callback even though the icon moves normally;
+    -- a reload must still restore the last position reached on the rim.
+    local nx, ny = dx / distance, dy / distance
+    DB.settings.minimapX = nx * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapY = ny * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapPosition = { x = nx, y = ny }
     PlaceMinimapButton()
     return true
 end
@@ -1325,8 +1327,8 @@ local function FinishMinimapDrag(button)
     button:SetScript("OnUpdate", nil)
     -- The last cursor event may have occurred between update frames.
     SaveMinimapCursorDirection()
-    -- Commit a durable saved direction in addition to legacy X/Y.
-    -- Standard tables serialize reliably to WoW's account-wide SavedVariables.
+    -- One final save in case the cursor moved after the last frame update.
+    -- The same durable direction is also written during every drag update.
     local nx, ny = MinimapDirection()
     DB.settings.minimapPosition = { x = nx, y = ny }
     PlaceMinimapButton()
