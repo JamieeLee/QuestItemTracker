@@ -5,6 +5,7 @@
 ## Version: 0.5
 ## OptionalDeps: QuestieDB
 ## IconTexture: Interface\AddOns\QuestItemTracker\Media\QITIcon
+## LoadSavedVariablesFirst: 1
 ## SavedVariables: QuestItemTrackerDB
 
 QuestItemTracker.lua
