@@ -924,20 +924,58 @@ local function SetSolidColor(texture, r, g, b, a)
     end
 end
 
+-- Save the panel's center as offsets from UIParent, rather than absolute
+-- screen coordinates. This survives /reload and ordinary UI-scale changes.
+-- Missing or invalid SavedVariables fall back to the original centered layout.
+local function RestoreOptionsPanelPosition(panel)
+    local position = DB.settings.optionsPanelPosition
+    local x = type(position) == "table" and tonumber(position.x) or nil
+    local y = type(position) == "table" and tonumber(position.y) or nil
+    if not x or x ~= x or math.abs(x) > 10000 or
+        not y or y ~= y or math.abs(y) > 10000 then
+        x, y = 0, 45
+    end
+    panel:ClearAllPoints()
+    panel:SetPoint("CENTER", UIParent, "CENTER", x, y)
+end
+
+local function SaveOptionsPanelPosition(panel)
+    local cx, cy = SafeCall(panel.GetCenter, panel)
+    local ux, uy = SafeCall(UIParent and UIParent.GetCenter, UIParent)
+    if type(cx) ~= "number" or type(cy) ~= "number" or
+        type(ux) ~= "number" or type(uy) ~= "number" then return end
+
+    local panelScale = SafeCall(panel.GetEffectiveScale, panel) or 1
+    local parentScale = SafeCall(UIParent.GetEffectiveScale, UIParent) or 1
+    if type(panelScale) ~= "number" or type(parentScale) ~= "number" or
+        panelScale <= 0 or parentScale <= 0 then return end
+
+    -- GetCenter values are in each frame's own scale. Convert to parent units
+    -- before storing offsets for SetPoint relative to UIParent's center.
+    local x = (cx * panelScale - ux * parentScale) / parentScale
+    local y = (cy * panelScale - uy * parentScale) / parentScale
+    if x == x and y == y and math.abs(x) <= 10000 and math.abs(y) <= 10000 then
+        DB.settings.optionsPanelPosition = { x = x, y = y }
+    end
+end
+
 local function CreateOptionsPanel()
     if optionsPanel then return optionsPanel end
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
     panel:SetSize(360, 454)
-    panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
+    RestoreOptionsPanelPosition(panel)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
     panel:SetMovable(true)
     panel:SetClampedToScreen(true)
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
-    panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    panel:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveOptionsPanelPosition(self)
+    end)
 
     local border = panel:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
@@ -1008,6 +1046,8 @@ local function CreateOptionsPanel()
     reset:SetText("Reset defaults")
     reset:SetScript("OnClick", function()
         for key, value in pairs(DEFAULT_SETTINGS) do DB.settings[key] = value end
+        DB.settings.optionsPanelPosition = nil
+        RestoreOptionsPanelPosition(panel)
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
