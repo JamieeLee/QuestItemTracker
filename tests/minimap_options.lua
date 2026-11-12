@@ -502,6 +502,11 @@ button.scripts.OnDragStart(button)
 assert(type(button.scripts.OnUpdate)=='function',
   'minimap button should orbit during drag instead of moving freely')
 button.scripts.OnUpdate(button)
+-- A live position must be present in SavedVariables *before* mouse release.
+-- This protects clients that miss the final drag-stop callback.
+local liveSaved=QuestItemTrackerDB.settings.minimapPosition
+assert(type(liveSaved)=='table' and liveSaved.x<0 and liveSaved.y>0,
+  'live minimap drag must persist current position before drag stop')
 local dragged=checkButtonOnRim(75,75)
 assert(dragged[4]<0 and dragged[5]>0,
   'drag must follow cursor into upper-left quadrant')
@@ -574,6 +579,14 @@ panel:Show()
 assert(panel:IsShown() and QuestItemTrackerDB.settings.optionsPanelPosition.x==325,
   'closing and reopening must not lose saved positioning')
 
+-- Mimic a client that misses both release callbacks: movement worked,
+-- but /reload was invoked before OnDragStop or OnMouseUp. Position must persist.
+cursorX,cursorY=390,440
+button.scripts.OnDragStart(button)
+button.scripts.OnUpdate(button)
+local unsignaledDrop=QuestItemTrackerDB.settings.minimapPosition
+assert(unsignaledDrop and unsignaledDrop.x<0 and unsignaledDrop.y<0,
+  'missing release callback must not lose the current saved button position')
 -- Simulate WoW writing the SavedVariables table to disk, then creating an
 -- entirely new Lua environment on /reload (not just reopening the options).
 local beforeReloadPoint=button.points[#button.points]
@@ -583,8 +596,9 @@ _G.QuestItemTrackerDB=cloneSavedVariables(oldDatabase)
 assert(QuestItemTrackerDB~=oldDatabase,
   'reload test must not reuse the original in-memory database table')
 assert(QuestItemTrackerDB.settings.minimapPosition
-  and QuestItemTrackerDB.settings.minimapPosition.x>0,
-  'serialized SavedVariables lost the final icon drop position')
+  and QuestItemTrackerDB.settings.minimapPosition.x<0
+  and QuestItemTrackerDB.settings.minimapPosition.y<0,
+  'serialized SavedVariables lost the last dragged icon location')
 assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
 local reloadMain,reloadButton
 for i=beforeReload+1,#frames do
