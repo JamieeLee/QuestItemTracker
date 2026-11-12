@@ -45,24 +45,31 @@ def current_changes(root: Path, version: str) -> str:
 
 
 def release_notes(version: str, changes: str) -> str:
-    # Dependency block is intentionally unconditional: can't forget it on a release.
-    return (f"# QIT-v{version} — Quest Item Tracker Forever\n\n"
-            "Quest Item Tracker Forever adds quest associations, inventory counts, and item guidance directly to tooltips.\n\n"
-            "## Required Dependency — QuestieDB\n\n"
-            "**QuestieDB is REQUIRED.** Install and enable the standalone "
-            f"[QuestieDB addon]({DEPENDENCY_URL}) alongside Quest Item Tracker Forever.\n\n"
+    # This exact player-facing body is used on GitHub and CurseForge.
+    # Keep installation guidance valid on BOTH platforms.
+    return (f"# Quest Item Tracker Forever (QITF) — v{version}\n\n"
+            "Quest Item Tracker Forever adds quest information, item counts, and "
+            "NEEDED / KEEP / SAFE TO DELETE guidance to item tooltips.\n\n"
+            "## Required dependency: QuestieDB\n\n"
+            "**QuestieDB is REQUIRED.** The separate "
+            f"[QuestieDB addon]({DEPENDENCY_URL}) must be installed and enabled.\n\n"
+            "CurseForge should install QuestieDB automatically when you install QITF through "
+            "its app. If installing the GitHub ZIP manually, install QuestieDB separately.\n\n"
             "**Full Questie is NOT required.** Only QuestieDB is needed.\n\n"
-            "## Changes in this version\n\n"
+            "## What's new in this version\n\n"
             f"{changes}\n\n"
-            "## Installation\n\n"
-            f"1. Download **`{PREFIX}{version}.zip`** from the Assets section below.\n"
-            "2. Extract it into your WoW Forever `Interface/AddOns` folder.\n"
-            "3. Verify the path is `Interface/AddOns/QuestItemTracker/QuestItemTracker.toc`.\n"
-            "4. Install and enable standalone **QuestieDB**, then enable **Quest Item Tracker Forever**.\n"
-            "5. Log in; QIT initializes automatically. Use `/qit options` for settings.\n\n"
+            "## Installation and updates\n\n"
+            "**CurseForge app:** Install or update Quest Item Tracker Forever. "
+            "Verify that QuestieDB is enabled in WoW's AddOns menu.\n\n"
+            f"**Manual ZIP:** Download \`{PREFIX}{version}.zip\` from this version's GitHub release, "
+            "extract the \`QuestItemTracker\` folder into WoW Forever's "
+            "\`Interface/AddOns\` directory, and install QuestieDB separately.\n\n"
+            "You should have \`Interface/AddOns/QuestItemTracker/QuestItemTracker.toc\`. "
+            "Log in and open settings using \`/qit options\`.\n\n"
             "## Important\n\n"
-            "QIT never deletes, sells, or moves items. Item recommendations depend on available QuestieDB "
-            "and game-client information, which may be incomplete for custom server quests or non-quest uses.\n\n"
+            "QITF never deletes, sells, or moves your items. Its guidance depends on "
+            "available QuestieDB and game-client information and may not cover "
+            "custom server quests or unrelated item uses. When unsure, keep the item.\n\n"
             "**Author:** JamieeLee · **License:** GPL-3.0\n")
 
 
@@ -125,7 +132,7 @@ def make_curseforge_metadata(version: str, changes: str) -> dict:
     data = {
         "changelog": release_notes(version, changes),
         "changelogType": "markdown",
-        "displayName": f"QIT-v{version} (WoW Forever)",
+        "displayName": f"QITF-v{version} (WoW Forever)",
         "releaseType": "release",
         "relations": {"projects": [{"slug": "questiedb", "type": "requiredDependency"}]},
     }
