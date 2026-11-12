@@ -195,21 +195,23 @@ end
 local startRim=checkButtonOnRim(75,75)
 assert(startRim[4]>0 and startRim[5]<0,
   'default minimap position should be lower-right')
--- Classic icon geometry: small quest book, background and standard ring.
-local foundBook,foundBackground,foundBorder=false,false,false
+-- The approved badge has its own rim and ribbon; adding a tracking border
+-- or the original book would cover its tiny FOREVER lettering.
+local badge, extraBorders=0,0
 for _, f in ipairs(frames) do
   if f.parent==button and f.kind=='Texture' then
-    if f.texture=='Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon' then
-      foundBook=f.w==18 and f.h==18 and f.points[1][1]=='TOPLEFT'
-    elseif f.texture=='Interface\\Minimap\\UI-Minimap-Background' then
-      foundBackground=f.w==20 and f.h==20
-    elseif f.texture=='Interface\\Minimap\\MiniMap-TrackingBorder' then
-      foundBorder=f.w==53 and f.h==53 and f.points[1][1]=='TOPLEFT'
+    if f.texture=='Interface\\AddOns\\QuestItemTracker\\Media\\QITForeverBadge' then
+      assert(f.w==30 and f.h==30 and f.points[1][1]=='CENTER',
+        'the approved QITF badge must be centered at minimap button size')
+      badge=badge+1
+    elseif f.texture=='Interface\\Minimap\\UI-Minimap-Background'
+        or f.texture=='Interface\\Minimap\\MiniMap-TrackingBorder' then
+      extraBorders=extraBorders+1
     end
   end
 end
-assert(foundBook and foundBackground and foundBorder,
-  'QITF minimap artwork should align with standard addon buttons')
+assert(badge==1 and extraBorders==0,
+  'minimap needs one approved QITF badge without overlaying extra border artwork')
 button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
