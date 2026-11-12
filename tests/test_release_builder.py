@@ -111,6 +111,29 @@ class ReleaseBuilderTests(unittest.TestCase):
             with zipfile.ZipFile(archive) as z:
                 self.assertEqual(z.read("QuestItemTracker/Media/StatusCircle.tga"), data)
 
+    def test_approved_minimap_badge_is_included_in_release_zip(self):
+        project = Path(__file__).resolve().parents[1]
+        badge = project / "QuestItemTracker/Media/QITForeverBadge.tga"
+        data = badge.read_bytes()
+        self.assertEqual(data[:3], bytes([0, 0, 2]))
+        self.assertEqual(int.from_bytes(data[12:14], "little"), 32)
+        self.assertEqual(int.from_bytes(data[14:16], "little"), 32)
+        self.assertEqual(data[16], 32)
+        self.assertGreater(data[18 + ((16 * 32 + 16) * 4) + 3], 0)
+        with tempfile.TemporaryDirectory() as folder:
+            archive = rb.create_package(project, Path(folder), rb.project_version(project))
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(z.read("QuestItemTracker/Media/QITForeverBadge.tga"), data)
+                lua = z.read("QuestItemTracker/QuestItemTracker.lua").decode()
+                self.assertIn("QIT_BADGE_TEXTURE", lua)
+                self.assertIn("0.96, 0.79, 0.40", lua)  # gold tooltip header
+
+    def test_missing_approved_minimap_badge_blocks_release(self):
+        addon = self.root / "QuestItemTracker"
+        (addon / "QuestItemTracker.lua").write_text("-- QIT_BADGE_TEXTURE")
+        with self.assertRaisesRegex(ValueError, "Required UI artwork missing"):
+            rb.create_package(self.root, self.root, "0.2")
+
     def test_curseforge_dependency_relation(self):
         metadata = rb.make_curseforge_metadata("0.2", "- Update")
         self.assertIn({"slug": "questiedb", "type": "requiredDependency"}, metadata["relations"]["projects"])
