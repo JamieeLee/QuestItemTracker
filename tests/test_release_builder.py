@@ -71,9 +71,11 @@ class ReleaseBuilderTests(unittest.TestCase):
         icon = project / "QuestItemTracker/Media/QITIcon.tga"
         data = icon.read_bytes()
         self.assertEqual(data[:3], b"\x00\x00\x02")
-        self.assertEqual(int.from_bytes(data[12:14], "little"), 32)
-        self.assertEqual(int.from_bytes(data[14:16], "little"), 32)
+        self.assertEqual(int.from_bytes(data[12:14], "little"), 64)
+        self.assertEqual(int.from_bytes(data[14:16], "little"), 64)
         self.assertEqual(data[16], 32)  # 32-bit BGRA incl. transparency
+        # The FOREVER ribbon is near the bottom of the icon, not a separate asset.
+        self.assertGreater(data[18 + ((52 * 64 + 32) * 4) + 3], 100)
         with tempfile.TemporaryDirectory() as folder:
             archive = rb.create_package(project, Path(folder), rb.project_version(project))
             with zipfile.ZipFile(archive) as z:
