@@ -329,14 +329,14 @@ end
 assert(seenTitle, 'settings title changed unexpectedly')
 assert(versionLabel and panelVersionCount==1, 'settings version must come from TOC exactly once')
 assert(versionLabel.textColor and versionLabel.textColor[1]<0.8, 'version should be a subtle muted label')
-local iconPath='Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon'
+local iconPath='Interface\\AddOns\\QuestItemTracker\\Media\\QITForeverBadge'
 local matchedIcon=false
 for _, f in ipairs(frames) do
   if f.kind=='Texture' and f.parent==button and f.texture==iconPath then
     matchedIcon=true
   end
 end
-assert(matchedIcon,'minimap button must use the custom matching quest-book icon')
+assert(matchedIcon,'minimap button must use the approved QITF FOREVER badge')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
 assert(#checks==7,'expected seven settings switches')
@@ -351,8 +351,8 @@ assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown
 local expectedHelps={
   {'Only show my faction quests','opposite faction'},
   {'Hide IDs from other addons','off by default'},
-  {'Show QIT quest IDs','quest ID'},
-  {'Show QIT item IDs','item'},
+  {'Show QITF quest IDs','quest ID'},
+  {'Show QITF item IDs','item'},
   {'Show quest levels','Level 60'},
   {'Show bag / bank breakdown','bags and bank'},
   {'Show future quest labels','KEEP or NEEDED'},
