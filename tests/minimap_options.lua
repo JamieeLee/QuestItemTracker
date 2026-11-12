@@ -510,6 +510,22 @@ assert(button.scripts.OnUpdate==nil,
   'drag must stop updating when released')
 assert(type(QuestItemTrackerDB.settings.minimapX)=='number','minimap position not saved')
 assert(type(QuestItemTrackerDB.settings.minimapY)=='number','minimap position not saved')
+local savedDrop=QuestItemTrackerDB.settings.minimapPosition
+assert(type(savedDrop)=='table' and type(savedDrop.x)=='number'
+    and type(savedDrop.y)=='number' and savedDrop.x<0 and savedDrop.y>0,
+  'drag release must commit the final rim position to SavedVariables')
+
+-- Some Forever UI layouts send mouse release without a drag-stop event.
+-- This fallback must commit the drop without affecting normal clicks.
+cursorX,cursorY=610,530
+button.scripts.OnDragStart(button)
+button.scripts.OnUpdate(button)
+button.scripts.OnMouseUp(button,'LeftButton')
+assert(button.scripts.OnUpdate==nil and not button.qitDragging,
+  'mouse release must finalize the drag even if OnDragStop was not fired')
+savedDrop=QuestItemTrackerDB.settings.minimapPosition
+assert(type(savedDrop)=='table' and savedDrop.x>0 and savedDrop.y>0,
+  'mouse release fallback did not commit the final location')
 local oldDirectionX=QuestItemTrackerDB.settings.minimapX
 local oldDirectionY=QuestItemTrackerDB.settings.minimapY
 
@@ -535,6 +551,17 @@ checkButtonOnRim(75,75)
 
 -- Unlike closing/reopening one Frame, a UI reload recreates the frame.
 -- Preserve only account-wide SavedVariables, then load addon Lua again.
+local function cloneSavedVariables(value, seen)
+  if type(value)~='table' then return value end
+  seen=seen or {}
+  if seen[value] then return seen[value] end
+  local copy={}
+  seen[value]=copy
+  for key,item in pairs(value) do
+    copy[cloneSavedVariables(key,seen)]=cloneSavedVariables(item,seen)
+  end
+  return copy
+end
 panel.cx, panel.cy = 895, 625
 panel.scripts.OnDragStart(panel)
 panel.scripts.OnDragStop(panel)
@@ -547,7 +574,17 @@ panel:Show()
 assert(panel:IsShown() and QuestItemTrackerDB.settings.optionsPanelPosition.x==325,
   'closing and reopening must not lose saved positioning')
 
+-- Simulate WoW writing the SavedVariables table to disk, then creating an
+-- entirely new Lua environment on /reload (not just reopening the options).
+local beforeReloadPoint=button.points[#button.points]
 local beforeReload=#frames
+local oldDatabase=QuestItemTrackerDB
+_G.QuestItemTrackerDB=cloneSavedVariables(oldDatabase)
+assert(QuestItemTrackerDB~=oldDatabase,
+  'reload test must not reuse the original in-memory database table')
+assert(QuestItemTrackerDB.settings.minimapPosition
+  and QuestItemTrackerDB.settings.minimapPosition.x>0,
+  'serialized SavedVariables lost the final icon drop position')
 assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
 local reloadMain,reloadButton
 for i=beforeReload+1,#frames do
@@ -561,6 +598,10 @@ for i=beforeReload+1,#frames do
   if f.name=='QITMinimapButton' then reloadButton=f end
 end
 assert(reloadButton,'minimap button missing after UI reload')
+local reloadedPoint=reloadButton.points[#reloadButton.points]
+assert(reloadedPoint and math.abs(reloadedPoint[4]-beforeReloadPoint[4])<0.01
+  and math.abs(reloadedPoint[5]-beforeReloadPoint[5])<0.01,
+  'minimap badge must return to its dropped position after /reload')
 reloadButton.scripts.OnClick(reloadButton,'LeftButton')
 local restoredPanel
 for i=beforeReload+1,#frames do
