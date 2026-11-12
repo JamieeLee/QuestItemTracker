@@ -50,6 +50,20 @@ jobs:
             exit 1
           fi
 
+      - name: Require a new version for addon-code PRs
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH"
+          if git diff --name-only FETCH_HEAD HEAD | grep -Eq '^QuestItemTracker/QuestItemTracker\.(lua|toc)$'; then
+            OLD=$(git show FETCH_HEAD:QuestItemTracker/QuestItemTracker.toc | sed -n 's/^## Version: //p')
+            NEW=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
+            python3 -c 'import sys; old=tuple(map(int,sys.argv[1].split("."))); new=tuple(map(int,sys.argv[2].split("."))); assert new > old, f"Addon code changed without a newer version: {old} -> {new}"; print(f"Version advanced: {old} -> {new}")' "$OLD" "$NEW"
+          fi
+
       - name: Build and check test installable folder
         id: build
         shell: bash
