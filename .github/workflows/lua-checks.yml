@@ -154,7 +154,6 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
           VERSION: ${{ steps.release.outputs.version }}
-          CF_GAME_VERSION_IDS: ${{ vars.CF_GAME_VERSION_IDS || secrets.CF_GAME_VERSION_IDS }}
         run: |
           set -euo pipefail
           python3 scripts/release_builder.py build --tag "$TAG" --output dist
@@ -217,6 +216,15 @@ jobs:
               --pattern "QITForeverV${VERSION}.zip" --dir dist
           fi
           unzip -t "$FILE"
+
+          # Fail before any upload if another game version sneaks into metadata.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path("dist/curseforge-metadata.json").read_text())
+          assert metadata.get("gameVersions") == [17053], "Must target WoW Forever 1.60.1 only"
+          print("CurseForge target locked: WoW Forever 1.60.1")
+          PY
 
           curl --fail-with-body --show-error --silent --retry 2 \
             -H "X-Api-Token: $CF_API_TOKEN" \
