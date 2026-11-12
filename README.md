@@ -4,12 +4,12 @@
 
 Quest Item Tracker Forever is a lightweight addon for **World of Warcraft: Forever** that adds useful quest information directly to item tooltips. Hover an item in your bags to see which quests use it, how many you have, and whether you should keep it.
 
-QIT uses the standalone **QuestieDB** data addon for quest information. **You do not need to install full Questie.**
+QITF uses the standalone **QuestieDB** data addon for quest information. **You do not need to install full Questie.**
 
 ## What it does
 
 - **Quest-aware tooltips:** See associated quest names, levels, item requirements, and current quest status.
-- **Item guidance:** Identify items **NEEDED** for active quests or worth **KEEPING** for later or repeatable quests. Where the available data permits, QIT can mark an item **SAFE TO DELETE**.
+- **Item guidance:** Identify items **NEEDED** for active quests or worth **KEEPING** for later or repeatable quests. Where the available data permits, QITF can mark an item **SAFE TO DELETE**.
 - **More than collection quests:** Recognizes quest starter items, items supplied by quest givers, required source items, spell-use items, and other verified item associations.
 - **Quest reward origins:** For select miscellaneous and quest-category rewards, shows which quest rewarded the item without treating the reward itself as a requirement.
 - **Faction-aware:** Hides quests restricted to the opposite faction by default. Neutral quests and quests already in your log remain visible.
@@ -21,7 +21,7 @@ QIT uses the standalone **QuestieDB** data addon for quest information. **You do
 
 ## How the tooltip works
 
-When QIT identifies a relevant item, it adds a section showing the associated quests and an item recommendation. The recommendation depends on your **current quest log**, **completed quest history**, **faction**, and **QuestieDB's known requirements**.
+When QITF identifies a relevant item, it adds a section showing the associated quests and an item recommendation. The recommendation depends on your **current quest log**, **completed quest history**, **faction**, and **QuestieDB's known requirements**.
 
 | Label | Meaning |
 | --- | --- |
@@ -47,7 +47,7 @@ QITF **never deletes, sells, or moves your items**. Its guidance is based on the
 4. Verify both addons are enabled in WoW's AddOns screen.
 5. Log in and hover a quest item. QITF automatically synchronizes your quest history and builds its item index.
 
-**Updating from an older QITF version?** Replace the addon files, but keep your existing SavedVariables; QIT preserves and migrates older quest records.
+**Updating from an older QITF version?** Replace the addon files, but keep your existing SavedVariables; QITF preserves and migrates older quest records.
 
 ## Settings
 
