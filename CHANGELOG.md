@@ -6,20 +6,18 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 ## [0.5] - 2026-11-12
 
-### Cleaner item tooltips
-- Add **Hide IDs from other addons**, off by default, to hide extra technical ID rows on shared item tooltips without changing other addons' settings.
-- Keep QITF's own quest and item ID options independent and grouped under **ID DISPLAY**.
+### What's new
+- **Cleaner item tooltips:** Optionally hide extra ItemID and IconID lines added by other addons. This is off by default; QITF's own quest and item IDs remain separate options.
+- **Settings that explain themselves:** Hover over any setting for a plain-English description of what it changes.
+- **A more polished look:** The settings window now uses a warm charcoal-and-gold theme, with standard WoW checkboxes and buttons for UI skin compatibility.
+- **QuestieDB status at a glance:** A small green or red indicator in settings shows whether QuestieDB is ready. Hover over it to see what's working or what needs to be fixed.
+- **Better positioning:** The settings window remembers where you moved it, including after a reload. Reset defaults returns it to the center.
+- **Improved minimap button:** The QITF badge sits neatly on the minimap edge, follows the rim while dragging, remembers its position, and adapts to different minimap sizes and layouts.
+- **Forever branding:** The AddOns-list quest-book icon includes a subtle FOREVER stamp, while the minimap has its own gold QIT / FOREVER badge and matching gold tooltip heading.
 
-### Easier-to-use settings
-- Explain all seven settings in plain English when hovered, without adding clutter to the window.
-- Remember where you move the settings window after closing, reloading, or restarting the game. **Reset defaults** returns it to the center.
-- Add a small green/red QuestieDB status light with helpful hover messages if QuestieDB is missing, disabled, or not working correctly.
-- Allow QITF's settings window to open even if QuestieDB is missing from a manual installation. CurseForge still lists QuestieDB as a required dependency.
-- Refresh the default settings appearance with warm charcoal and muted gold while retaining native WoW controls.
-
-### Minimap and branding
-- Improve minimap button alignment, dragging around the map's edge, and placement across different minimap sizes and layouts.
-- Give the AddOns-list quest-book icon a subtle **FOREVER** stamp, and refine the minimap tooltip's colors to match the new interface.
+### Installing QITF
+- **CurseForge:** QuestieDB remains a required dependency and should install automatically.
+- **Manual GitHub ZIP:** Install QuestieDB separately. QITF's settings can still open and explain the missing dependency if you forgot it.
 
 ## [0.4] - 2026-11-12
 
