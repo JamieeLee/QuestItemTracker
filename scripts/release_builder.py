@@ -41,6 +41,11 @@ def current_changes(root: Path, version: str) -> str:
     changes = text[start:stop].strip()
     if not changes:
         raise ValueError(f"CHANGELOG.md entry for {version} has no release notes")
+    # Release notes are public product documentation, not a record of which
+    # other addons or codebases we consulted during development.
+    for name in ("BigWigs", "LibDBIcon"):
+        if name.lower() in changes.lower():
+            raise ValueError(f"Remove development-only reference from public release notes: {name}")
     return changes
 
 
