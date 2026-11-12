@@ -60,6 +60,27 @@ class ReleaseBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Nested archive"):
             rb.create_package(self.root, self.root, "0.2")
 
+    def test_real_addon_icon_is_included_in_installable_zip(self):
+        # The character-select AddOns icon and minimap button share this
+        # tiny native TGA. A forgotten art asset would yield WoW's red '?'.
+        project = Path(__file__).resolve().parents[1]
+        toc = (project / "QuestItemTracker/QuestItemTracker.toc").read_text()
+        self.assertIn(
+            r"## IconTexture: Interface\AddOns\QuestItemTracker\Media\QITIcon", toc
+        )
+        icon = project / "QuestItemTracker/Media/QITIcon.tga"
+        data = icon.read_bytes()
+        self.assertEqual(data[:3], b"\x00\x00\x02")
+        self.assertEqual(int.from_bytes(data[12:14], "little"), 32)
+        self.assertEqual(int.from_bytes(data[14:16], "little"), 32)
+        self.assertEqual(data[16], 32)  # 32-bit BGRA incl. transparency
+        with tempfile.TemporaryDirectory() as folder:
+            archive = rb.create_package(project, Path(folder), rb.project_version(project))
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(
+                    z.read("QuestItemTracker/Media/QITIcon.tga"), data
+                )
+
     def test_curseforge_dependency_relation(self):
         metadata = rb.make_curseforge_metadata("0.2", "- Update")
         self.assertIn({"slug": "questiedb", "type": "requiredDependency"}, metadata["relations"]["projects"])
