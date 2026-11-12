@@ -85,6 +85,23 @@ def create_package(root: Path, output: Path, version: str):
     required = [addon_dir / f"{ADDON}.toc", addon_dir / f"{ADDON}.lua", addon_dir / "README.txt"]
     if any(not p.is_file() for p in required):
         raise ValueError("Required addon file missing (TOC, Lua, README.txt)")
+
+    # Never ship a new icon reference without its actual texture. This is
+    # checked before release notes or publication, including in PR test ZIPs.
+    lua_source = (addon_dir / f"{ADDON}.lua").read_text(encoding="utf-8")
+    if "QIT_BADGE_TEXTURE" in lua_source:
+        for name, size in (("QITForeverBadge.tga", 32), ("QITIcon.tga", 64),
+                           ("StatusCircle.tga", 32)):
+            art = addon_dir / "Media" / name
+            if not art.is_file():
+                raise ValueError(f"Required UI artwork missing: {art.relative_to(root)}")
+            data = art.read_bytes()
+            if len(data) < 18 + size * size * 4 or data[:3] != b"\\x00\\x00\\x02" or data[16] != 32 or (
+                int.from_bytes(data[12:14], "little") != size
+                or int.from_bytes(data[14:16], "little") != size
+            ):
+                raise ValueError(f"Invalid {size}x{size} BGRA UI artwork: {art.relative_to(root)}")
+
     license_file = root / "LICENSE"
     if not license_file.is_file():
         raise ValueError("Root LICENSE file is required for the installable package")
