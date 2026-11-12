@@ -17,13 +17,17 @@ _G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end}
 _G.QuestDB={
-  GetAllIds=function() return {821,700} end,
-  name=function(id) return id==700 and "Grey Forager" or "Chen's Empty Keg" end,
-  questLevel=function(id) return id==700 and 6 or 15 end,
+  GetAllIds=function() return {821,700,701,901,902} end,
+  name=function(id)
+    return ({[700]="Grey Forager",[701]="Grey Farmer",[901]="Repeatable Hunt",
+      [902]="Repeatable Offering",[821]="Chen's Empty Keg"})[id]
+  end,
+  questLevel=function(id) return (id==700 or id==701) and 6 or 15 end,
+  specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
   objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
   requiredSourceItems=function() return nil end,
 }
-_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700} end end}
+_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902} end end}
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
   GetInfo=function() end,
@@ -32,7 +36,7 @@ _G.C_QuestLog={
   IsQuestFlaggedCompleted=function() return false end,
   IsRepeatableQuest=function() return false end,
   IsQuestReplayable=function() return false end,
-  IsQuestTrivial=function(id) return id==700 end,
+  IsQuestTrivial=function(id) return id==700 or id==701 end,
   GetQuestDifficultyLevel=function() return 15 end,
   GetTitleForQuestID=function() return "Chen's Empty Keg" end,
 }
@@ -157,7 +161,29 @@ end
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
 assert(clean:find('Grey Forager',1,true),'grey quest name must remain visible')
-assert(clean:find('GREY QUEST',1,true),'trivial quest marker missing in compact mode')
+assert(clean:find('LOW-LEVEL QUESTS',1,true),'low-level group heading missing')
+assert(clean:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
+assert(clean:find('Grey Forager',1,true) and clean:find('Grey Farmer',1,true),
+  'both low-level quest names must remain visible')
+assert(clean:find('Repeatable Hunt',1,true) and clean:find('Repeatable Offering',1,true),
+  'both repeatable quest names must remain visible')
+local function occurrences(haystack, needle)
+  local total, start=0,1
+  while true do
+    local index=haystack:find(needle,start,true)
+    if not index then return total end
+    total=total+1
+    start=index+#needle
+  end
+end
+assert(occurrences(clean,'REPEATABLE QUESTS')==1,'repeatable heading duplicated')
+assert(occurrences(clean,'LOW-LEVEL QUESTS')==1,'low-level heading duplicated')
+assert(occurrences(clean,'REPEATABLE QUEST')==1,'repeatable status must not repeat per quest')
+assert(occurrences(clean,'GREY QUEST')==0,'grey status must not repeat per quest')
+assert(clean:find("Chen's Empty Keg",1,true)<clean:find('REPEATABLE QUESTS',1,true),
+  'ordinary quests should be listed before repeatables')
+assert(clean:find('REPEATABLE QUESTS',1,true)<clean:find('LOW-LEVEL QUESTS',1,true),
+  'low-level group should be after repeatables')
 assert(not clean:find('FUTURE QUEST',1,true) and not clean:find('FUTURE USE',1,true),'future status lines should be suppressed by default')
 assert(not clean:find('No current quest needs',1,true),'redundant future footer must be suppressed')
 assert(clean:find('|cffc0c0c0Grey Forager',1,true),'grey quest color code is malformed')
@@ -169,7 +195,10 @@ assert(tooltip(6948)=='','ordinary item was decorated')
 checks[6]:SetChecked(true);checks[6].scripts.OnClick(checks[6])
 local detailedFuture=tooltip(4894)
 assert(detailedFuture:find('FUTURE QUEST',1,true),'optional future quest status not restored')
-assert(detailedFuture:find('FUTURE USE · GREY QUEST',1,true),'optional grey quest detail not restored')
+assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:find('FUTURE USE · GREY QUEST',1,true),
+  'grey quests should stay grouped even when detailed status labels are enabled')
+assert(detailedFuture:find('REPEATABLE QUESTS',1,true) and occurrences(detailedFuture,'REPEATABLE QUEST')==1,
+  'repeatable heading should not duplicate its per-quest label in detailed mode')
 assert(detailedFuture:find('No current quest needs',1,true),'optional future footer not restored')
 checks[6]:SetChecked(false);checks[6].scripts.OnClick(checks[6])
 assert(not tooltip(4894):find('FUTURE QUEST',1,true),'future status does not turn off')
@@ -201,7 +230,7 @@ assert(not restored:find('Item ID:',1,true),'reset did not hide item IDs')
 assert(restored:find('(Level 15)',1,true),'reset did not show quest levels')
 assert(restored:find('Bags: 3 | Bank: 2',1,true),'reset did not show breakdown')
 assert(not restored:find('FUTURE QUEST',1,true),'reset did not hide future labels')
-assert(restored:find('GREY QUEST',1,true),'reset did not keep grey marker')
+assert(restored:find('LOW-LEVEL QUESTS',1,true),'reset did not keep low-level group')
 button.scripts.OnDragStart(button)
 button.scripts.OnDragStop(button)
 assert(type(QuestItemTrackerDB.settings.minimapX)=='number','minimap position not saved')

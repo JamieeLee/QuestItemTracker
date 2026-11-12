@@ -11,6 +11,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Replace the default question-mark icon in WoW's AddOns list with a custom gold-and-blue quest-book icon.
 - Use the same compact icon in the draggable minimap settings button without adding version text or clutter to the minimap tooltip.
 - Keep the internal addon folder, SavedVariables, slash commands, and dependency setup unchanged.
+- Group repeatable and low-level (grey) quest associations under one clean heading per category instead of repeating the same status beneath each quest; retain meaningful active/completion statuses, quest IDs, and item counts.
 
 ## [0.3] - 2026-11-11
 
