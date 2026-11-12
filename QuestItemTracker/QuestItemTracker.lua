@@ -1011,7 +1011,8 @@ local function QuestieDBStatus()
 end
 
 local function UpdateQuestieDBStatusLight()
-    if not questieDBStatusLight then return end
+    if not questieDBStatusLight or
+        type(questieDBStatusLight.label.SetTextColor) ~= "function" then return end
     local ready = QuestieDBStatus()
     questieDBStatusLight.label:SetTextColor(
         ready and 0.28 or 0.98,
