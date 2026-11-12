@@ -81,6 +81,27 @@ class ReleaseBuilderTests(unittest.TestCase):
                     z.read("QuestItemTracker/Media/QITIcon.tga"), data
                 )
 
+    def test_status_circle_is_round_and_ships_in_zip(self):
+        # Native transparent TGA rather than a font glyph, which Forever
+        # renders as an empty square when the font lacks that character.
+        project = Path(__file__).resolve().parents[1]
+        path = project / "QuestItemTracker/Media/StatusCircle.tga"
+        data = path.read_bytes()
+        self.assertEqual(data[:3], bytes([0, 0, 2]))
+        self.assertEqual(int.from_bytes(data[12:14], "little"), 32)
+        self.assertEqual(int.from_bytes(data[14:16], "little"), 32)
+        self.assertEqual(data[16], 32)
+        pixels = data[18:]
+        def alpha(x, y):
+            return pixels[(y * 32 + x) * 4 + 3]
+        self.assertEqual(alpha(0, 0), 0)
+        self.assertEqual(alpha(31, 31), 0)
+        self.assertGreater(alpha(15, 15), 200)
+        with tempfile.TemporaryDirectory() as folder:
+            archive = rb.create_package(project, Path(folder), rb.project_version(project))
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(z.read("QuestItemTracker/Media/StatusCircle.tga"), data)
+
     def test_curseforge_dependency_relation(self):
         metadata = rb.make_curseforge_metadata("0.2", "- Update")
         self.assertIn({"slug": "questiedb", "type": "requiredDependency"}, metadata["relations"]["projects"])
