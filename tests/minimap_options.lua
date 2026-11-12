@@ -133,7 +133,7 @@ end
 assert(seenTitle, 'settings title changed unexpectedly')
 assert(versionLabel and panelVersionCount==1, 'settings version must come from TOC exactly once')
 assert(versionLabel.textColor and versionLabel.textColor[1]<0.8, 'version should be a subtle muted label')
-local iconPath='Interface\\\\AddOns\\\\QuestItemTracker\\\\Media\\\\QITIcon'
+local iconPath='Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon'
 local matchedIcon=false
 for _, f in ipairs(frames) do
   if f.kind=='Texture' and f.parent==button and f.texture==iconPath then
