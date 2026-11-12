@@ -11,7 +11,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - **A more polished look:** The settings window now uses a warm charcoal-and-gold theme, with standard WoW checkboxes and buttons for UI skin compatibility.
 - **QuestieDB status at a glance:** A small green or red indicator in settings shows whether QuestieDB is ready. Hover over it to see what's working or what needs to be fixed.
 - **Better positioning:** The settings window remembers where you moved it, including after a reload. Reset defaults returns it to the center.
-- **Improved minimap button:** The QITF badge sits neatly on the minimap edge, follows the rim while dragging, remembers its position, and adapts to different minimap sizes and layouts.
+- **Improved minimap button:** The QITF badge sits neatly on the minimap edge, follows the rim while dragging, saves its position across `/reload` and restarts, and adapts to different minimap sizes and layouts.
 - **Forever branding:** The AddOns-list quest-book icon includes a subtle FOREVER stamp, while the minimap has its own gold QIT / FOREVER badge and matching gold tooltip heading.
 
 ## [0.4] - 2026-11-12
