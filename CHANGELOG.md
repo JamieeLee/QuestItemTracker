@@ -11,6 +11,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Organize the ID display options together: external-addon suppression first, followed by independent **Show QIT quest IDs** and **Show QIT item IDs** toggles. Existing QIT ID preferences remain off by default.
 - Leave normal item details, descriptions, and all quest matching/KEEP decisions unchanged. Do not modify other addons' SavedVariables or settings.
 - Refresh the settings panel with compact ID and details sections; preserve one source-of-truth changelog and the automatic release pipeline.
+- Remember the dragged settings-panel position in QIT's account-wide SavedVariables and restore it after `/reload` or restarting WoW. Fresh installs keep the original centered position, and **Reset defaults** recenters the panel.
 
 ## [0.4] - 2026-11-12
 
