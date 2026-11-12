@@ -1252,10 +1252,8 @@ local function ToggleOptionsPanel()
     if panel:IsShown() then panel:Hide() else panel:Show() end
 end
 
--- Match the minimap edge geometry used by common addon buttons such as
--- BigWigs/LibDBIcon, without requiring that library or BigWigs to be present.
--- Old saved X/Y offsets still work: their direction is kept, but the radius
--- now comes from the actual minimap size instead of a fixed 80 pixels.
+-- Position the minimap button around the actual rim, keeping saved drag
+-- directions compatible with earlier builds. The radius adjusts to size.
 local MINIMAP_EDGE_PADDING = 5
 local MINIMAP_SAVE_RADIUS = 80
 
@@ -1314,8 +1312,8 @@ local function CreateMinimapButton()
     button:RegisterForDrag("LeftButton")
     button:SetMovable(true)
 
-    -- Use the same classic minimap button artwork geometry as LibDBIcon.
-    -- This keeps the book visually aligned with neighboring addon buttons.
+    -- Use the classic minimap button layout so the book and its border line
+    -- up with other buttons around the ring.
     local background = button:CreateTexture(nil, "BACKGROUND")
     background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
     background:SetSize(20, 20)
@@ -1654,10 +1652,19 @@ local function HookTooltipFrame(tooltip)
             RunTooltipHook(self)
         end)
         if ok then hooked = true end
-        -- Third-party tooltip callbacks can append IDs after our callbacks;
-        -- recheck only while the opt-in setting is enabled.
-        pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self)
-            SuppressExternalTooltipIDs(self)
+        -- Some inventory UIs append IDs after their regular tooltip callbacks.
+        -- Check at most every 0.15 seconds, not every rendered frame.
+        local rescanElapsed = 0
+        pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
+            if not SettingEnabled("suppressExternalIDs") then
+                rescanElapsed = 0
+                return
+            end
+            rescanElapsed = rescanElapsed + (tonumber(elapsed) or 0)
+            if rescanElapsed >= 0.15 then
+                rescanElapsed = 0
+                SuppressExternalTooltipIDs(self)
+            end
         end)
     end
 
