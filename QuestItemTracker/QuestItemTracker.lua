@@ -1327,7 +1327,7 @@ local function CreateMinimapButton()
     button:SetScript("OnEnter", function(self)
         if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Quest Item Tracker Forever", 0.4, 0.8, 1)
+        GameTooltip:AddLine("Quest Item Tracker Forever", 0.96, 0.79, 0.40)
         GameTooltip:AddLine("Click: tooltip settings", 1, 1, 1)
         GameTooltip:AddLine("Drag: move minimap button", 0.7, 0.7, 0.7)
         GameTooltip:Show()
