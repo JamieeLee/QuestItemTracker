@@ -46,6 +46,13 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertIn("Full Questie is NOT required", body)
         self.assertIn("QITForeverV0.2.zip", body)
         self.assertNotIn("Initial release.", body)
+        self.assertIn("Quest Item Tracker Forever (QITF)", body)
+        self.assertIn("CurseForge should install QuestieDB automatically", body)
+        self.assertIn("**Manual ZIP:**", body)
+        self.assertIn("**CurseForge app:**", body)
+        self.assertNotIn("Assets section below", body)
+        self.assertNotIn("BigWigs", body)
+        self.assertNotIn("LibDBIcon", body)
 
     def test_tag_mismatch_fails(self):
         with self.assertRaises(ValueError):
@@ -117,7 +124,7 @@ class ReleaseBuilderTests(unittest.TestCase):
         with patch.dict(os.environ, {"CF_GAME_VERSION_IDS": "999999"}):
             metadata = rb.make_curseforge_metadata("0.4", "- New release")
         self.assertEqual(metadata["gameVersions"], [17053])
-        self.assertEqual(metadata["displayName"], "QIT-v0.4 (WoW Forever)")
+        self.assertEqual(metadata["displayName"], "QITF-v0.4 (WoW Forever)")
 
 
 if __name__ == "__main__":
