@@ -1252,12 +1252,57 @@ local function ToggleOptionsPanel()
     if panel:IsShown() then panel:Hide() else panel:Show() end
 end
 
-local function PlaceMinimapButton()
-    if not minimapButton or not Minimap then return end
+-- Match the minimap edge geometry used by common addon buttons such as
+-- BigWigs/LibDBIcon, without requiring that library or BigWigs to be present.
+-- Old saved X/Y offsets still work: their direction is kept, but the radius
+-- now comes from the actual minimap size instead of a fixed 80 pixels.
+local MINIMAP_EDGE_PADDING = 5
+local MINIMAP_SAVE_RADIUS = 80
+
+local function MinimapDirection()
     local x = tonumber(DB.settings.minimapX) or 75
     local y = tonumber(DB.settings.minimapY) or -28
+    local length = math.sqrt(x * x + y * y)
+    if length < 0.001 then return 1, 0 end
+    return x / length, y / length
+end
+
+local function PlaceMinimapButton()
+    if not minimapButton or not Minimap then return end
+    local nx, ny = MinimapDirection()
+    local width = tonumber(SafeCall(Minimap.GetWidth, Minimap)) or 140
+    local height = tonumber(SafeCall(Minimap.GetHeight, Minimap)) or width
+    if width <= 0 then width = 140 end
+    if height <= 0 then height = width end
+
+    -- Square minimap skins use the perimeter rather than a round orbit.
+    local shape = SafeCall(GetMinimapShape)
+    if shape == "SQUARE" then
+        local edge = math.max(math.abs(nx), math.abs(ny))
+        if edge > 0 then nx, ny = nx / edge, ny / edge end
+    end
+
+    local x = nx * (width / 2 + MINIMAP_EDGE_PADDING)
+    local y = ny * (height / 2 + MINIMAP_EDGE_PADDING)
     minimapButton:ClearAllPoints()
     minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function SaveMinimapCursorDirection()
+    if not Minimap or type(GetCursorPosition) ~= "function" then return false end
+    local mouseX, mouseY = SafeCall(GetCursorPosition)
+    local centerX, centerY = SafeCall(Minimap.GetCenter, Minimap)
+    local scale = tonumber(SafeCall(Minimap.GetEffectiveScale, Minimap)) or 1
+    if type(mouseX) ~= "number" or type(mouseY) ~= "number"
+        or type(centerX) ~= "number" or type(centerY) ~= "number"
+        or scale <= 0 then return false end
+    local dx, dy = mouseX / scale - centerX, mouseY / scale - centerY
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance < 0.001 then return false end
+    DB.settings.minimapX = dx / distance * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapY = dy / distance * MINIMAP_SAVE_RADIUS
+    PlaceMinimapButton()
+    return true
 end
 
 local function CreateMinimapButton()
@@ -1269,15 +1314,23 @@ local function CreateMinimapButton()
     button:RegisterForDrag("LeftButton")
     button:SetMovable(true)
 
+    -- Use the same classic minimap button artwork geometry as LibDBIcon.
+    -- This keeps the book visually aligned with neighboring addon buttons.
+    local background = button:CreateTexture(nil, "BACKGROUND")
+    background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    background:SetSize(20, 20)
+    background:SetPoint("TOPLEFT", button, "TOPLEFT", 7, -5)
+
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(21, 21)
-    icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+    icon:SetSize(18, 18)
+    icon:SetPoint("TOPLEFT", button, "TOPLEFT", 7, -6)
     icon:SetTexture(QIT_ICON_TEXTURE)
-    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0, 1, 0, 1) end
+    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0.05, 0.95, 0.05, 0.95) end
+
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetSize(54, 54)
-    border:SetPoint("CENTER", button, "CENTER", 10, -10)
+    border:SetSize(53, 53)
+    border:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
 
     button:SetScript("OnClick", ToggleOptionsPanel)
     button:SetScript("OnEnter", function(self)
@@ -1291,24 +1344,22 @@ local function CreateMinimapButton()
     button:SetScript("OnLeave", function()
         if GameTooltip and type(GameTooltip.Hide) == "function" then GameTooltip:Hide() end
     end)
-    button:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    button:SetScript("OnDragStart", function(self)
+        -- Orbit around the minimap as the cursor moves, rather than briefly
+        -- dragging the button through the middle and snapping it back.
+        self:SetScript("OnUpdate", SaveMinimapCursorDirection)
+    end)
     button:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local x, y = self:GetCenter()
-        local centerX, centerY = Minimap:GetCenter()
-        if x and y and centerX and centerY then
-            local dx, dy = x - centerX, y - centerY
-            local distance = math.sqrt(dx * dx + dy * dy)
-            if distance > 0 then
-                -- Snap to the minimap rim, and remember placement on relog.
-                DB.settings.minimapX = math.floor(dx / distance * 80 + 0.5)
-                DB.settings.minimapY = math.floor(dy / distance * 80 + 0.5)
-            end
-        end
+        self:SetScript("OnUpdate", nil)
+        SaveMinimapCursorDirection()
         PlaceMinimapButton()
     end)
     minimapButton = button
     PlaceMinimapButton()
+    -- Minimap replacement/scale addons sometimes resize their map after login.
+    if type(Minimap.HookScript) == "function" then
+        Minimap:HookScript("OnSizeChanged", PlaceMinimapButton)
+    end
 end
 
 local function AddTooltipLines(tooltip, data, explicitItemID)
