@@ -165,7 +165,7 @@ for _,f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'settings panel missing')
 local checks={}
 for _,f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
-assert(#checks==6,'expected 6 settings switches, got '..#checks)
+assert(#checks==7,'expected 7 settings switches, got '..#checks)
 assert(checks[1]:GetChecked()==true,'faction filtering should default on')
 checks[1]:SetChecked(false);checks[1].scripts.OnClick(checks[1])
 local unfiltered=tooltip(9001)
