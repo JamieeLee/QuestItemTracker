@@ -46,11 +46,11 @@ def current_changes(root: Path, version: str) -> str:
 
 def release_notes(version: str, changes: str) -> str:
     # Dependency block is intentionally unconditional: can't forget it on a release.
-    return (f"# QIT-v{version} — Quest Item Tracker for WoW Forever\n\n"
-            "Quest Item Tracker adds quest associations, inventory counts, and item guidance directly to tooltips.\n\n"
+    return (f"# QIT-v{version} — Quest Item Tracker Forever\n\n"
+            "Quest Item Tracker Forever adds quest associations, inventory counts, and item guidance directly to tooltips.\n\n"
             "## Required Dependency — QuestieDB\n\n"
             "**QuestieDB is REQUIRED.** Install and enable the standalone "
-            f"[QuestieDB addon]({DEPENDENCY_URL}) alongside Quest Item Tracker.\n\n"
+            f"[QuestieDB addon]({DEPENDENCY_URL}) alongside Quest Item Tracker Forever.\n\n"
             "**Full Questie is NOT required.** Only QuestieDB is needed.\n\n"
             "## Changes in this version\n\n"
             f"{changes}\n\n"
@@ -58,7 +58,7 @@ def release_notes(version: str, changes: str) -> str:
             f"1. Download **`{PREFIX}{version}.zip`** from the Assets section below.\n"
             "2. Extract it into your WoW Forever `Interface/AddOns` folder.\n"
             "3. Verify the path is `Interface/AddOns/QuestItemTracker/QuestItemTracker.toc`.\n"
-            "4. Install and enable standalone **QuestieDB**, then enable **Quest Item Tracker**.\n"
+            "4. Install and enable standalone **QuestieDB**, then enable **Quest Item Tracker Forever**.\n"
             "5. Log in; QIT initializes automatically. Use `/qit options` for settings.\n\n"
             "## Important\n\n"
             "QIT never deletes, sells, or moves items. Item recommendations depend on available QuestieDB "
