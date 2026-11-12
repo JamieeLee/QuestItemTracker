@@ -17,17 +17,20 @@ _G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end}
 _G.QuestDB={
-  GetAllIds=function() return {821,700,701,901,902} end,
+  GetAllIds=function() return {821,700,701,901,902,1001,1002,1003,1004,1005} end,
   name=function(id)
     return ({[700]="Grey Forager",[701]="Grey Farmer",[901]="Repeatable Hunt",
-      [902]="Repeatable Offering",[821]="Chen's Empty Keg"})[id]
+      [902]="Repeatable Offering",[821]="Chen's Empty Keg",
+      [1001]="A Donation of Wool",[1002]="A Donation of Wool",
+      [1003]="A Donation of Wool",[1004]="A Donation of Wool",
+      [1005]="A Donation of Wool"})[id]
   end,
-  questLevel=function(id) return (id==700 or id==701) and 6 or 15 end,
+  questLevel=function(id) return (id>=1001 and id<=1005) and 60 or ((id==700 or id==701) and 6 or 15) end,
   specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
   objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
   requiredSourceItems=function() return nil end,
 }
-_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902} end end}
+_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end end}
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
   GetInfo=function() end,
@@ -162,6 +165,11 @@ local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
 assert(clean:find('Grey Forager',1,true),'grey quest name must remain visible')
 assert(clean:find('LOW-LEVEL QUESTS',1,true),'low-level group heading missing')
+assert(clean:find('FACTION TURN-INS',1,true),'faction donation heading missing')
+assert(clean:find('A Donation of Wool',1,true),'donation quest missing')
+assert(clean:find('(5 quests)',1,true),'five identical donation quests must be combined')
+assert(not clean:find('A Donation of Wool',clean:find('A Donation of Wool',1,true)+1,true),
+  'duplicate donation rows were not compacted')
 assert(clean:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
 assert(clean:find('Grey Forager',1,true) and clean:find('Grey Farmer',1,true),
   'both low-level quest names must remain visible')
@@ -178,6 +186,7 @@ local function occurrences(haystack, needle)
 end
 assert(occurrences(clean,'REPEATABLE QUESTS')==1,'repeatable heading duplicated')
 assert(occurrences(clean,'LOW-LEVEL QUESTS')==1,'low-level heading duplicated')
+assert(occurrences(clean,'FACTION TURN-INS')==1,'faction heading duplicated')
 assert(occurrences(clean,'REPEATABLE QUEST')==1,'repeatable status must not repeat per quest')
 assert(occurrences(clean,'GREY QUEST')==0,'grey status must not repeat per quest')
 assert(clean:find("Chen's Empty Keg",1,true)<clean:find('REPEATABLE QUESTS',1,true),
@@ -207,6 +216,8 @@ for _,i in ipairs({2,3}) do
 end
 local detailed=tooltip(4894)
 assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
+assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
+  'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
 for _,i in ipairs({4,5}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
