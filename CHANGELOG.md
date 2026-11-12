@@ -6,7 +6,6 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 ## [0.5] - 2026-11-12
 
-### What's new
 - **Cleaner item tooltips:** Optionally hide extra ItemID and IconID lines added by other addons. This is off by default; QITF's own quest and item IDs remain separate options.
 - **Settings that explain themselves:** Hover over any setting for a plain-English description of what it changes.
 - **A more polished look:** The settings window now uses a warm charcoal-and-gold theme, with standard WoW checkboxes and buttons for UI skin compatibility.
@@ -14,10 +13,6 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - **Better positioning:** The settings window remembers where you moved it, including after a reload. Reset defaults returns it to the center.
 - **Improved minimap button:** The QITF badge sits neatly on the minimap edge, follows the rim while dragging, remembers its position, and adapts to different minimap sizes and layouts.
 - **Forever branding:** The AddOns-list quest-book icon includes a subtle FOREVER stamp, while the minimap has its own gold QIT / FOREVER badge and matching gold tooltip heading.
-
-### Installing QITF
-- **CurseForge:** QuestieDB remains a required dependency and should install automatically.
-- **Manual GitHub ZIP:** Install QuestieDB separately. QITF's settings can still open and explain the missing dependency if you forgot it.
 
 ## [0.4] - 2026-11-12
 
