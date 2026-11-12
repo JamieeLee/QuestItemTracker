@@ -96,7 +96,7 @@ def create_package(root: Path, output: Path, version: str):
             if not art.is_file():
                 raise ValueError(f"Required UI artwork missing: {art.relative_to(root)}")
             data = art.read_bytes()
-            if len(data) < 18 + size * size * 4 or data[:3] != b"\\x00\\x00\\x02" or data[16] != 32 or (
+            if len(data) < 18 + size * size * 4 or data[:3] != bytes([0, 0, 2]) or data[16] != 32 or (
                 int.from_bytes(data[12:14], "little") != size
                 or int.from_bytes(data[14:16], "little") != size
             ):
