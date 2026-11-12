@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes a GitHub release after passing CI. CurseForge publishing remains a separate explicit action.
 
+## [0.5] - 2026-11-12
+
+### Tooltip preferences
+- Add a new **Hide IDs from other addons** option, **off by default**; only when enabled, suppress isolated technical ID rows like ItemID and IconID from other addons' shared item tooltips.
+- Organize the ID display options together: external-addon suppression first, followed by independent **Show QIT quest IDs** and **Show QIT item IDs** toggles. Existing QIT ID preferences remain off by default.
+- Leave normal item details, descriptions, and all quest matching/KEEP decisions unchanged. Do not modify other addons' SavedVariables or settings.
+- Refresh the settings panel with compact ID and details sections; preserve one source-of-truth changelog and the automatic release pipeline.
+
 ## [0.4] - 2026-11-12
 
 ### Interface polish
