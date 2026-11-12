@@ -1259,11 +1259,17 @@ local MINIMAP_EDGE_PADDING = 5
 local MINIMAP_SAVE_RADIUS = 80
 
 local function MinimapDirection()
-    -- The finalized drag direction is stored as a single SavedVariables
-    -- angle. Keep the historical X/Y fields as a fallback for older installs.
-    local angle = tonumber(DB.settings.minimapAngle)
-    if angle and angle == angle and math.abs(angle) <= 100000 then
-        return math.cos(angle), math.sin(angle)
+    -- Restore the committed drop position after /reload. Keep historical
+    -- X/Y fields as a fallback for players upgrading from older versions.
+    local saved = DB.settings.minimapPosition
+    if type(saved) == "table" then
+        local sx, sy = tonumber(saved.x), tonumber(saved.y)
+        if sx and sy and sx == sx and sy == sy then
+            local length = math.sqrt(sx * sx + sy * sy)
+            if length > 0.001 and length < 10000 then
+                return sx / length, sy / length
+            end
+        end
     end
     local x = tonumber(DB.settings.minimapX) or 75
     local y = tonumber(DB.settings.minimapY) or -28
@@ -1305,10 +1311,10 @@ local function SaveMinimapCursorDirection()
     local distance = math.sqrt(dx * dx + dy * dy)
     if distance < 0.001 then return false end
     -- While dragging, keep the existing smooth rim movement unchanged.
-    -- The final angle is committed separately on mouse release.
+    -- The finalized position is committed separately on mouse release.
     DB.settings.minimapX = dx / distance * MINIMAP_SAVE_RADIUS
     DB.settings.minimapY = dy / distance * MINIMAP_SAVE_RADIUS
-    DB.settings.minimapAngle = nil
+    DB.settings.minimapPosition = nil
     PlaceMinimapButton()
     return true
 end
@@ -1319,11 +1325,10 @@ local function FinishMinimapDrag(button)
     button:SetScript("OnUpdate", nil)
     -- The last cursor event may have occurred between update frames.
     SaveMinimapCursorDirection()
-    -- Commit a compact scalar to SavedVariables in addition to legacy X/Y,
-    -- which are still accepted for players upgrading from earlier versions.
+    -- Commit a durable saved direction in addition to legacy X/Y.
+    -- Standard tables serialize reliably to WoW's account-wide SavedVariables.
     local nx, ny = MinimapDirection()
-    DB.settings.minimapAngle = math.atan2 and math.atan2(ny, nx)
-        or math.atan(ny, nx)
+    DB.settings.minimapPosition = { x = nx, y = ny }
     PlaceMinimapButton()
 end
 
