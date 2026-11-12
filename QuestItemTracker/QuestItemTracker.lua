@@ -1,4 +1,4 @@
--- Quest Item Tracker Forever v0.3
+-- Quest Item Tracker Forever (version comes from the TOC metadata)
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -42,6 +42,15 @@ local function SafeCall(fn, ...)
     local ok, a, b, c, d = pcall(fn, ...)
     if ok then return a, b, c, d end
     return nil
+end
+
+-- Read the addon's public version from its TOC; never hardcode it in the UI.
+local function AddonVersion()
+    local version = SafeCall(C_AddOns and C_AddOns.GetAddOnMetadata, "QuestItemTracker", "Version")
+    if type(version) ~= "string" or version == "" then
+        version = SafeCall(GetAddOnMetadata, "QuestItemTracker", "Version")
+    end
+    return type(version) == "string" and version ~= "" and version or nil
 end
 
 local function Now()
@@ -840,6 +849,7 @@ end
 
 local optionsPanel
 local minimapButton
+local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
 
 local function SetSolidColor(texture, r, g, b, a)
     if type(texture.SetColorTexture) == "function" then
@@ -880,6 +890,13 @@ local function CreateOptionsPanel()
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
     title:SetText("Quest Item Tracker Forever")
+    local version = AddonVersion()
+    if version then
+        local versionLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -2)
+        versionLabel:SetText("v" .. version)
+        versionLabel:SetTextColor(0.55, 0.63, 0.72, 1)
+    end
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
@@ -964,8 +981,8 @@ local function CreateMinimapButton()
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(21, 21)
     icon:SetPoint("CENTER", button, "CENTER", 0, 0)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
-    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    icon:SetTexture(QIT_ICON_TEXTURE)
+    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0, 1, 0, 1) end
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     border:SetSize(54, 54)
@@ -1102,14 +1119,15 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
     end
 
+    -- Build a display-only layout from the already-filtered matches. Grouped
+    -- headings avoid repeating the same REPEATABLE / GREY label per quest.
+    -- Retention and per-quest status calculations above remain authoritative.
     local activeCount, futureCount, completedCount = 0, 0, 0
+    local ordinaryQuests, repeatableQuests, lowLevelQuests, factionTurnIns = {}, {}, {}, {}
     for _, questID in ipairs(ids) do
         local entry = matches[questID]
         local active = activeMap[questID]
-        local questName = (active and active.title) or QuestDBName(questID)
         local status, color = GetQuestStatus(questID, entry, activeMap)
-        local level = GetQuestLevel(questID, active)
-        local levelText = level and ("Level " .. level) or "Level unknown"
 
         -- Informational reward/event links do not count as future quest USES.
         if not IsInformationalOnly(entry) then
@@ -1122,33 +1140,131 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             end
         end
 
-        local isRewardOrigin = IsInformationalOnly(entry)
-            and (entry.sources or {})["database quest reward"]
-        local nameLine = color .. (isRewardOrigin and "Reward from: " or "") .. questName .. "|r"
-        if SettingEnabled("showQuestLevels") then nameLine = nameLine .. "  (" .. levelText .. ")" end
+        local row = {
+            id = questID,
+            entry = entry,
+            name = (active and active.title) or QuestDBName(questID),
+            level = GetQuestLevel(questID, active),
+            status = status,
+            color = color,
+            rewardOrigin = IsInformationalOnly(entry)
+                and (entry.sources or {})["database quest reward"],
+        }
+        if not IsInformationalOnly(entry) and
+            (IsQuestRepeatableByID(questID) or (active and IsRepeatableQuest(active))) then
+            repeatableQuests[#repeatableQuests + 1] = row
+        elseif status == "FUTURE USE · GREY QUEST" then
+            lowLevelQuests[#lowLevelQuests + 1] = row
+        elseif not IsInformationalOnly(entry) and
+            string.find(row.name, "^A Donation of ") then
+            -- City cloth quartermasters share donation titles across faction quests.
+            factionTurnIns[#factionTurnIns + 1] = row
+        else
+            ordinaryQuests[#ordinaryQuests + 1] = row
+        end
+    end
+
+    local showIDs = SettingEnabled("showQuestIDs")
+    local showFuture = SettingEnabled("showFutureStatusLabels")
+    local showLevels = SettingEnabled("showQuestLevels")
+
+    -- Multiple distinct faction/city quests can share the same title and level
+    -- (for example five separate "A Donation of Wool" quests). Compact only
+    -- equivalent presentation rows; never merge underlying IDs, statuses,
+    -- requirements or retention/matching decisions.
+    local function CompactQuestRows(rows)
+        local compact, byKey = {}, {}
+        for _, row in ipairs(rows) do
+            local entry = row.entry or {}
+            local key = table.concat({
+                row.name or "",
+                tostring(row.level or ""),
+                row.status or "",
+                row.color or "",
+                row.rewardOrigin and "reward" or "ordinary",
+                tostring(entry.required or ""),
+                tostring(entry.detail or ""),
+            }, "\031")
+            local existing = byKey[key]
+            if existing then
+                existing.ids[#existing.ids + 1] = row.id
+            else
+                row.ids = { row.id }
+                compact[#compact + 1] = row
+                byKey[key] = row
+            end
+        end
+        return compact
+    end
+
+    local function ShowQuestRow(row, grouped)
+        local indent = grouped and "    " or "  "
+        local nameIndent = grouped and "  " or ""
+        local nameLine = nameIndent .. row.color
+            .. (row.rewardOrigin and "Reward from: " or "") .. row.name .. "|r"
+        if showLevels then
+            nameLine = nameLine .. "  (" .. (row.level and ("Level " .. row.level) or "Level unknown") .. ")"
+        end
+        if #row.ids > 1 then
+            nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
+        end
         tooltip:AddLine(nameLine)
-        -- Future status lines are optional; quest names/levels never disappear.
-        -- Grey quests retain a concise GREY QUEST marker even in compact mode.
-        if not SettingEnabled("showFutureStatusLabels") then
+
+        local status = row.status
+        if grouped == "repeatable" then
+            -- The heading already tells the player these quests repeat.
+            if status == "REPEATABLE QUEST" then
+                status = nil
+            elseif status == "REPEATABLE · COMPLETED BEFORE" then
+                status = showFuture and "COMPLETED BEFORE" or nil
+            elseif status == "NEEDED · REPEATABLE" then
+                status = "NEEDED NOW"
+            elseif status == "REPEATABLE — KEEP FOR NEXT TIME" then
+                status = "KEEP FOR NEXT TIME"
+            end
+        elseif grouped == "lowLevel" and status == "FUTURE USE · GREY QUEST" then
+            -- One low-level heading replaces every repeated GREY QUEST line.
+            status = nil
+        end
+        -- Future status lines remain opt-in; essential active states remain.
+        if not showFuture then
             if status == "FUTURE USE · GREY QUEST" then
                 status = "GREY QUEST"
             elseif status == "FUTURE QUEST" or status == "FUTURE USE · ABANDONED" then
                 status = nil
             end
         end
-        if status or SettingEnabled("showQuestIDs") then
-            local statusLine = status and ("  " .. status) or "  "
-            if SettingEnabled("showQuestIDs") then
-                statusLine = statusLine .. (status and "  |  " or "") .. "Quest ID: " .. questID
+        if status or showIDs then
+            local statusLine = status and (indent .. status) or indent
+            if showIDs then
+                local idsText = #row.ids > 1
+                    and ("Quest IDs: " .. table.concat(row.ids, ", "))
+                    or ("Quest ID: " .. row.id)
+                statusLine = statusLine .. (status and "  |  " or "") .. idsText
             end
             tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
         end
 
+        local entry = row.entry
         if entry.required and entry.required > 0 and not IsInformationalOnly(entry) then
-            tooltip:AddLine("  Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
+            tooltip:AddLine(indent .. "Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
         elseif entry.detail then
-            tooltip:AddLine("  " .. entry.detail, 0.7, 0.7, 0.7, true)
+            tooltip:AddLine(indent .. entry.detail, 0.7, 0.7, 0.7, true)
         end
+    end
+
+    for _, row in ipairs(CompactQuestRows(ordinaryQuests)) do ShowQuestRow(row, nil) end
+    if #factionTurnIns > 0 then
+        tooltip:AddLine("FACTION TURN-INS", 0.4, 0.78, 1)
+        for _, row in ipairs(CompactQuestRows(factionTurnIns)) do ShowQuestRow(row, "faction") end
+    end
+    if #repeatableQuests > 0 then
+        tooltip:AddLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
+        for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
+    end
+    if #lowLevelQuests > 0 then
+        tooltip:AddLine("LOW-LEVEL QUESTS", 0.6, 0.72, 0.84)
+        for _, row in ipairs(CompactQuestRows(lowLevelQuests)) do ShowQuestRow(row, "lowLevel") end
     end
 
     if partial then

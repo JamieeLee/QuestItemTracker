@@ -1,5 +1,9 @@
 -- Standalone simulated WoW Forever client for the QIT minimap settings UI.
 _G.QuestItemTrackerDB = nil
+_G.C_AddOns = {GetAddOnMetadata=function(addon,key)
+  assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
+  if key=='Version' then return '0.4' end
+end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
 _G.NUM_BAG_SLOTS = 4
@@ -13,13 +17,20 @@ _G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end}
 _G.QuestDB={
-  GetAllIds=function() return {821,700} end,
-  name=function(id) return id==700 and "Grey Forager" or "Chen's Empty Keg" end,
-  questLevel=function(id) return id==700 and 6 or 15 end,
+  GetAllIds=function() return {821,700,701,901,902,1001,1002,1003,1004,1005} end,
+  name=function(id)
+    return ({[700]="Grey Forager",[701]="Grey Farmer",[901]="Repeatable Hunt",
+      [902]="Repeatable Offering",[821]="Chen's Empty Keg",
+      [1001]="A Donation of Wool",[1002]="A Donation of Wool",
+      [1003]="A Donation of Wool",[1004]="A Donation of Wool",
+      [1005]="A Donation of Wool"})[id]
+  end,
+  questLevel=function(id) return (id>=1001 and id<=1005) and 60 or ((id==700 or id==701) and 6 or 15) end,
+  specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
   objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
   requiredSourceItems=function() return nil end,
 }
-_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700} end end}
+_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end end}
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
   GetInfo=function() end,
@@ -28,7 +39,7 @@ _G.C_QuestLog={
   IsQuestFlaggedCompleted=function() return false end,
   IsRepeatableQuest=function() return false end,
   IsQuestReplayable=function() return false end,
-  IsQuestTrivial=function(id) return id==700 end,
+  IsQuestTrivial=function(id) return id==700 or id==701 end,
   GetQuestDifficultyLevel=function() return 15 end,
   GetTitleForQuestID=function() return "Chen's Empty Keg" end,
 }
@@ -67,7 +78,8 @@ local function MockFrame(kind,name,parent)
   function f:SetHeight() end
   function f:SetWidth() end
   function f:SetAllPoints() end
-  function f:SetTexture() end
+  function f:SetTexture(texture) self.texture=texture end
+  function f:SetTextColor(r,g,b,a) self.textColor={r,g,b,a} end
   function f:SetColorTexture() end
   function f:SetTexCoord() end
   function f:CreateTexture() return MockFrame('Texture',nil,self) end
@@ -118,6 +130,24 @@ button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'minimap button did not open settings')
+local seenTitle, versionLabel, panelVersionCount = false, nil, 0
+for _, f in ipairs(frames) do
+  if f.kind=='FontString' and f.parent==panel then
+    if f.text=='Quest Item Tracker Forever' then seenTitle=true end
+    if f.text=='v0.4' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+  end
+end
+assert(seenTitle, 'settings title changed unexpectedly')
+assert(versionLabel and panelVersionCount==1, 'settings version must come from TOC exactly once')
+assert(versionLabel.textColor and versionLabel.textColor[1]<0.8, 'version should be a subtle muted label')
+local iconPath='Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon'
+local matchedIcon=false
+for _, f in ipairs(frames) do
+  if f.kind=='Texture' and f.parent==button and f.texture==iconPath then
+    matchedIcon=true
+  end
+end
+assert(matchedIcon,'minimap button must use the custom matching quest-book icon')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
 assert(#checks==6,'expected six settings switches')
@@ -134,7 +164,35 @@ end
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
 assert(clean:find('Grey Forager',1,true),'grey quest name must remain visible')
-assert(clean:find('GREY QUEST',1,true),'trivial quest marker missing in compact mode')
+assert(clean:find('LOW-LEVEL QUESTS',1,true),'low-level group heading missing')
+assert(clean:find('FACTION TURN-INS',1,true),'faction donation heading missing')
+assert(clean:find('A Donation of Wool',1,true),'donation quest missing')
+assert(clean:find('(5 quests)',1,true),'five identical donation quests must be combined')
+assert(not clean:find('A Donation of Wool',clean:find('A Donation of Wool',1,true)+1,true),
+  'duplicate donation rows were not compacted')
+assert(clean:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
+assert(clean:find('Grey Forager',1,true) and clean:find('Grey Farmer',1,true),
+  'both low-level quest names must remain visible')
+assert(clean:find('Repeatable Hunt',1,true) and clean:find('Repeatable Offering',1,true),
+  'both repeatable quest names must remain visible')
+local function occurrences(haystack, needle)
+  local total, start=0,1
+  while true do
+    local index=haystack:find(needle,start,true)
+    if not index then return total end
+    total=total+1
+    start=index+#needle
+  end
+end
+assert(occurrences(clean,'REPEATABLE QUESTS')==1,'repeatable heading duplicated')
+assert(occurrences(clean,'LOW-LEVEL QUESTS')==1,'low-level heading duplicated')
+assert(occurrences(clean,'FACTION TURN-INS')==1,'faction heading duplicated')
+assert(occurrences(clean,'REPEATABLE QUEST')==1,'repeatable status must not repeat per quest')
+assert(occurrences(clean,'GREY QUEST')==0,'grey status must not repeat per quest')
+assert(clean:find("Chen's Empty Keg",1,true)<clean:find('REPEATABLE QUESTS',1,true),
+  'ordinary quests should be listed before repeatables')
+assert(clean:find('REPEATABLE QUESTS',1,true)<clean:find('LOW-LEVEL QUESTS',1,true),
+  'low-level group should be after repeatables')
 assert(not clean:find('FUTURE QUEST',1,true) and not clean:find('FUTURE USE',1,true),'future status lines should be suppressed by default')
 assert(not clean:find('No current quest needs',1,true),'redundant future footer must be suppressed')
 assert(clean:find('|cffc0c0c0Grey Forager',1,true),'grey quest color code is malformed')
@@ -146,7 +204,10 @@ assert(tooltip(6948)=='','ordinary item was decorated')
 checks[6]:SetChecked(true);checks[6].scripts.OnClick(checks[6])
 local detailedFuture=tooltip(4894)
 assert(detailedFuture:find('FUTURE QUEST',1,true),'optional future quest status not restored')
-assert(detailedFuture:find('FUTURE USE · GREY QUEST',1,true),'optional grey quest detail not restored')
+assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:find('FUTURE USE · GREY QUEST',1,true),
+  'grey quests should stay grouped even when detailed status labels are enabled')
+assert(detailedFuture:find('REPEATABLE QUESTS',1,true) and occurrences(detailedFuture,'REPEATABLE QUEST')==1,
+  'repeatable heading should not duplicate its per-quest label in detailed mode')
 assert(detailedFuture:find('No current quest needs',1,true),'optional future footer not restored')
 checks[6]:SetChecked(false);checks[6].scripts.OnClick(checks[6])
 assert(not tooltip(4894):find('FUTURE QUEST',1,true),'future status does not turn off')
@@ -155,6 +216,8 @@ for _,i in ipairs({2,3}) do
 end
 local detailed=tooltip(4894)
 assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
+assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
+  'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
 for _,i in ipairs({4,5}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
@@ -178,7 +241,7 @@ assert(not restored:find('Item ID:',1,true),'reset did not hide item IDs')
 assert(restored:find('(Level 15)',1,true),'reset did not show quest levels')
 assert(restored:find('Bags: 3 | Bank: 2',1,true),'reset did not show breakdown')
 assert(not restored:find('FUTURE QUEST',1,true),'reset did not hide future labels')
-assert(restored:find('GREY QUEST',1,true),'reset did not keep grey marker')
+assert(restored:find('LOW-LEVEL QUESTS',1,true),'reset did not keep low-level group')
 button.scripts.OnDragStart(button)
 button.scripts.OnDragStop(button)
 assert(type(QuestItemTrackerDB.settings.minimapX)=='number','minimap position not saved')
