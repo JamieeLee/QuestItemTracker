@@ -106,7 +106,7 @@ assert(joined:find('Iron Claw Quest',1,true),'indexed/related active quest missi
 assert(joined:find('Custom Bag Quest',1,true),'second active quest missing from native metadata')
 assert(joined:match('Custom Bag Quest[^\n]*\n%s*NEEDED NOW'), 'false frequency must not count as repeatable')
 assert(joined:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
-assert(joined:match('Iron Claw Quest[^\\n]*\\n%s*NEEDED NOW'),
+assert(joined:match('Iron Claw Quest[^\n]*\n%s*NEEDED NOW'),
     'active repeatable should retain its NEEDED state under the group')
 assert(joined:find('Have 1 / Need 3',1,true),'item required count corrupted')
 assert(not joined:find('Have 1 / Need 4',1,true),'different item substring falsely matched')
