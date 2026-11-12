@@ -312,6 +312,8 @@ local tocText=toc:read('*a'); toc:close()
 assert(tocText:find('## OptionalDeps: QuestieDB',1,true) and
   not tocText:find('## Dependencies: QuestieDB',1,true),
   'QIT must be able to load without QuestieDB to show the red warning')
+assert(tocText:find('## LoadSavedVariablesFirst: 1',1,true),
+  'SavedVariables must be available before QITF Lua initialization')
 
 local initialPoint=panel.points[#panel.points]
 assert(initialPoint and initialPoint[1]=='CENTER' and initialPoint[2]==UIParent and
@@ -592,20 +594,30 @@ assert(unsignaledDrop and unsignaledDrop.x<0 and unsignaledDrop.y<0,
 local beforeReloadPoint=button.points[#button.points]
 local beforeReload=#frames
 local oldDatabase=QuestItemTrackerDB
-_G.QuestItemTrackerDB=cloneSavedVariables(oldDatabase)
-assert(QuestItemTrackerDB~=oldDatabase,
+local diskDatabase=cloneSavedVariables(oldDatabase)
+assert(diskDatabase~=oldDatabase,
   'reload test must not reuse the original in-memory database table')
-assert(QuestItemTrackerDB.settings.minimapPosition
-  and QuestItemTrackerDB.settings.minimapPosition.x<0
-  and QuestItemTrackerDB.settings.minimapPosition.y<0,
+assert(diskDatabase.settings.minimapPosition
+  and diskDatabase.settings.minimapPosition.x<0
+  and diskDatabase.settings.minimapPosition.y<0,
   'serialized SavedVariables lost the last dragged icon location')
+
+-- Reproduce the real bug: an addon Lua file executes before the client's
+-- account-wide SavedVariables table gets injected. The original code kept
+-- the throwaway DB local forever, causing all future writes to disappear.
+_G.QuestItemTrackerDB=nil
 assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+local throwawayDatabase=QuestItemTrackerDB
+assert(type(throwawayDatabase)=='table' and throwawayDatabase~=diskDatabase,
+  'delayed SavedVariables scenario must create a distinct temporary table')
+_G.QuestItemTrackerDB=diskDatabase
 local reloadMain,reloadButton
 for i=beforeReload+1,#frames do
   local f=frames[i]
   if f.events.PLAYER_LOGIN then reloadMain=f end
 end
 assert(reloadMain,'addon reload did not create login handler')
+reloadMain.scripts.OnEvent(reloadMain,'ADDON_LOADED','QuestItemTracker')
 reloadMain.scripts.OnEvent(reloadMain,'PLAYER_LOGIN')
 for i=beforeReload+1,#frames do
   local f=frames[i]
@@ -616,6 +628,19 @@ local reloadedPoint=reloadButton.points[#reloadButton.points]
 assert(reloadedPoint and math.abs(reloadedPoint[4]-beforeReloadPoint[4])<0.01
   and math.abs(reloadedPoint[5]-beforeReloadPoint[5])<0.01,
   'minimap badge must return to its dropped position after /reload')
+
+-- A new drag must write to the *loaded global* SavedVariables database,
+-- not the throwaway table that was alive before ADDON_LOADED.
+cursorX,cursorY=610,530
+reloadButton.scripts.OnDragStart(reloadButton)
+reloadButton.scripts.OnUpdate(reloadButton)
+reloadButton.scripts.OnDragStop(reloadButton)
+assert(QuestItemTrackerDB==diskDatabase and
+  QuestItemTrackerDB.settings.minimapPosition.x>0 and
+  QuestItemTrackerDB.settings.minimapPosition.y>0,
+  'drag after reload must update the persisted global SavedVariables table')
+assert(throwawayDatabase.settings.minimapPosition==nil,
+  'new drag accidentally wrote to the pre-load temporary DB')
 reloadButton.scripts.OnClick(reloadButton,'LeftButton')
 local restoredPanel
 for i=beforeReload+1,#frames do
