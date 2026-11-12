@@ -64,6 +64,7 @@ local function MockFrame(kind,name,parent)
   function f:GetChecked() return self.checked end
   function f:SetText(v) self.text=v end
   function f:SetSize(w,h) self.w=w; self.h=h end
+  function f:SetHitRectInsets(...) self.hitInsets={...} end
   function f:SetPoint(...) self.points[#self.points+1]={...} end
   function f:ClearAllPoints() self.points={} end
   function f:GetCenter() return self.cx or 570, self.cy or 460 end
@@ -120,7 +121,9 @@ function GameTooltip:Show() self.shown=true end
 function GameTooltip:Hide() self.shown=false end
 function GameTooltip:SetBagItem() end
 function GameTooltip:SetHyperlink() end
-function GameTooltip:SetOwner() end
+function GameTooltip:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor end
+function GameTooltip:GetOwner() return self.owner end
+function GameTooltip:SetText(text) self.title=text end
 function GameTooltip:ClearLines() self.lines={} end
 _G.hooksecurefunc=function(t,method,hook)
   local fn=t[method]
@@ -180,6 +183,38 @@ assert(not checks[7]:GetChecked(),'future labels must be hidden by default')
 assert(not checks[2]:GetChecked(),'other addon IDs must stay visible by default')
 assert(checks[3]:GetChecked()==false and checks[4]:GetChecked()==false,'QIT IDs must be off by default')
 assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown must be on by default')
+
+-- Every setting explains its purpose when hovered, without technical jargon.
+-- The expanded hit area lets players hover (and click) on the label as well.
+local expectedHelps={
+  {'Only show my faction quests','opposite faction'},
+  {'Hide IDs from other addons','off by default'},
+  {'Show QIT quest IDs','quest ID'},
+  {'Show QIT item IDs','item'},
+  {'Show quest levels','Level 60'},
+  {'Show bag / bank breakdown','bags and bank'},
+  {'Show future quest labels','KEEP or NEEDED'},
+}
+for i, expected in ipairs(expectedHelps) do
+  local check=checks[i]
+  assert(check.hitInsets and check.hitInsets[2]<0,
+    'toggle '..i..' must be hoverable over its label')
+  assert(check.scripts.OnEnter and check.scripts.OnLeave,
+    'toggle '..i..' must offer an on-hover explanation')
+  GameTooltip:ClearLines()
+  GameTooltip.shown=false
+  check.scripts.OnEnter(check)
+  assert(GameTooltip:GetOwner()==check and GameTooltip.shown,
+    'hovering toggle '..i..' must open a tooltip owned by that toggle')
+  assert(GameTooltip.title==expected[1],
+    'hovering toggle '..i..' should name the setting')
+  assert(table.concat(GameTooltip.lines,' '):find(expected[2],1,true),
+    'hovering toggle '..i..' did not explain its effect')
+  check.scripts.OnLeave(check)
+  assert(not GameTooltip.shown,
+    'hover help must disappear when leaving toggle '..i)
+end
+
 local function tooltip(id)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then GameTooltip.scripts.OnTooltipCleared(GameTooltip) end
