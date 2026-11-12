@@ -1,4 +1,4 @@
--- Quest Item Tracker Forever v0.3
+-- Quest Item Tracker Forever (version comes from the TOC metadata)
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
@@ -42,6 +42,15 @@ local function SafeCall(fn, ...)
     local ok, a, b, c, d = pcall(fn, ...)
     if ok then return a, b, c, d end
     return nil
+end
+
+-- Read the addon's public version from its TOC; never hardcode it in the UI.
+local function AddonVersion()
+    local version = SafeCall(C_AddOns and C_AddOns.GetAddOnMetadata, "QuestItemTracker", "Version")
+    if type(version) ~= "string" or version == "" then
+        version = SafeCall(GetAddOnMetadata, "QuestItemTracker", "Version")
+    end
+    return type(version) == "string" and version ~= "" and version or nil
 end
 
 local function Now()
@@ -840,6 +849,7 @@ end
 
 local optionsPanel
 local minimapButton
+local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
 
 local function SetSolidColor(texture, r, g, b, a)
     if type(texture.SetColorTexture) == "function" then
@@ -880,6 +890,13 @@ local function CreateOptionsPanel()
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
     title:SetText("Quest Item Tracker Forever")
+    local version = AddonVersion()
+    if version then
+        local versionLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -2)
+        versionLabel:SetText("v" .. version)
+        versionLabel:SetTextColor(0.55, 0.63, 0.72, 1)
+    end
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
@@ -964,8 +981,8 @@ local function CreateMinimapButton()
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(21, 21)
     icon:SetPoint("CENTER", button, "CENTER", 0, 0)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
-    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    icon:SetTexture(QIT_ICON_TEXTURE)
+    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0, 1, 0, 1) end
     local border = button:CreateTexture(nil, "OVERLAY")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     border:SetSize(54, 54)

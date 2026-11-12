@@ -2,7 +2,15 @@
 
 All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in this single file**, newest release first.
 
-**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A version bump by itself does not publish a GitHub/CurseForge release; publishing is triggered by a matching `vX.Y` tag.
+**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes a GitHub release after passing CI. CurseForge publishing remains a separate explicit action.
+
+## [0.4] - 2026-11-12
+
+### Interface polish
+- Display a subtle version label immediately after the **Quest Item Tracker Forever** settings title, reading the value dynamically from the TOC via the modern or legacy addon metadata API.
+- Replace the default question-mark icon in WoW's AddOns list with a custom gold-and-blue quest-book icon.
+- Use the same compact icon in the draggable minimap settings button without adding version text or clutter to the minimap tooltip.
+- Keep the internal addon folder, SavedVariables, slash commands, and dependency setup unchanged.
 
 ## [0.3] - 2026-11-11
 

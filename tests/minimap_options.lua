@@ -1,5 +1,9 @@
 -- Standalone simulated WoW Forever client for the QIT minimap settings UI.
 _G.QuestItemTrackerDB = nil
+_G.C_AddOns = {GetAddOnMetadata=function(addon,key)
+  assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
+  if key=='Version' then return '0.4' end
+end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
 _G.NUM_BAG_SLOTS = 4
@@ -67,7 +71,8 @@ local function MockFrame(kind,name,parent)
   function f:SetHeight() end
   function f:SetWidth() end
   function f:SetAllPoints() end
-  function f:SetTexture() end
+  function f:SetTexture(texture) self.texture=texture end
+  function f:SetTextColor(r,g,b,a) self.textColor={r,g,b,a} end
   function f:SetColorTexture() end
   function f:SetTexCoord() end
   function f:CreateTexture() return MockFrame('Texture',nil,self) end
@@ -118,6 +123,24 @@ button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'minimap button did not open settings')
+local seenTitle, versionLabel, panelVersionCount = false, nil, 0
+for _, f in ipairs(frames) do
+  if f.kind=='FontString' and f.parent==panel then
+    if f.text=='Quest Item Tracker Forever' then seenTitle=true end
+    if f.text=='v0.4' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+  end
+end
+assert(seenTitle, 'settings title changed unexpectedly')
+assert(versionLabel and panelVersionCount==1, 'settings version must come from TOC exactly once')
+assert(versionLabel.textColor and versionLabel.textColor[1]<0.8, 'version should be a subtle muted label')
+local iconPath='Interface\\\\AddOns\\\\QuestItemTracker\\\\Media\\\\QITIcon'
+local matchedIcon=false
+for _, f in ipairs(frames) do
+  if f.kind=='Texture' and f.parent==button and f.texture==iconPath then
+    matchedIcon=true
+  end
+end
+assert(matchedIcon,'minimap button must use the custom matching quest-book icon')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
 assert(#checks==6,'expected six settings switches')
