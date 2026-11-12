@@ -186,7 +186,7 @@ assert(button.scripts.OnClick,'minimap bubble has no click behavior')
 local function checkButtonOnRim(radiusX,radiusY)
   local p=button.points[#button.points]
   assert(p and p[1]=='CENTER' and p[2]==Minimap and p[3]=='CENTER',
-    'QITF minimap button must anchor to the minimap center like LibDBIcon')
+    'QITF minimap button must anchor to the minimap center')
   local normalized=(p[4]/radiusX)^2+(p[5]/radiusY)^2
   assert(math.abs(normalized-1)<0.002,
     'QITF minimap button must stay on the outer rim, not inside the map')
@@ -195,7 +195,7 @@ end
 local startRim=checkButtonOnRim(75,75)
 assert(startRim[4]>0 and startRim[5]<0,
   'default minimap position should be lower-right')
--- BigWigs classic icon geometry: small book, background and standard ring.
+-- Classic icon geometry: small quest book, background and standard ring.
 local foundBook,foundBackground,foundBorder=false,false,false
 for _, f in ipairs(frames) do
   if f.parent==button and f.kind=='Texture' then
