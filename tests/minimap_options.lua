@@ -201,7 +201,7 @@ local function testStatusHover(title,needle)
   statusLight.scripts.OnLeave(statusLight)
   assert(not GameTooltip.shown,'dependency help must close on mouse leave')
 end
-testStatusHover('QuestieDB is ready','providing the quest information')
+testStatusHover('Quest Item Tracker Forever is ready','QuestieDB: Installed and enabled')
 
 local previousLib,previousQuestDB=LibQuestieDB,QuestDB
 
@@ -211,30 +211,30 @@ LibQuestieDB=nil
 panel:Hide();panel:Show()
 assert(statusLight.dot.vertexColor[1]>0.9 and statusLight.dot.vertexColor[2]<0.5,
   'disabled QuestieDB must show a red status light')
-testStatusHover('QuestieDB is disabled','Enable QuestieDB in the AddOns list')
+testStatusHover('Quest Item Tracker Forever needs attention','QuestieDB: Installed but disabled')
 
 -- The raw GitHub ZIP was installed without reading QuestieDB requirements.
 questieInstalled=false
 panel:Hide();panel:Show()
 assert(statusLight.dot.vertexColor[1]>0.9,'missing QuestieDB must stay red')
-testStatusHover('QuestieDB is not installed','CurseForge normally installs it')
+testStatusHover('Quest Item Tracker Forever needs attention','QuestieDB: Not installed')
 
 -- QuestieDB is installed but not loaded.
 questieInstalled,questieEnabled=true,true
 panel:Hide();panel:Show()
-testStatusHover('QuestieDB did not load','not loaded it')
+testStatusHover('Quest Item Tracker Forever needs attention','QuestieDB: Installed but not loaded')
 
 -- A mismatched QuestieDB contract has a different, actionable explanation.
 questieLoaded=true
 LibQuestieDB={RequireContract=function() return false, 'mismatched database' end}
 panel:Hide();panel:Show()
-testStatusHover('QuestieDB needs attention','compatible version')
+testStatusHover('Quest Item Tracker Forever needs attention','compatible version')
 
 -- Once QuestieDB loads correctly, QIT returns to green without a reload.
 LibQuestieDB,QuestDB=previousLib,previousQuestDB
 main.scripts.OnEvent(main,'ADDON_LOADED','QuestieDB')
 assert(statusLight.dot.vertexColor[2]>0.8,'light did not turn green when QuestieDB loaded')
-testStatusHover('QuestieDB is ready','providing the quest information')
+testStatusHover('Quest Item Tracker Forever is ready','QuestieDB: Installed and enabled')
 
 local toc=assert(io.open('QuestItemTracker/QuestItemTracker.toc','r'))
 local tocText=toc:read('*a'); toc:close()
