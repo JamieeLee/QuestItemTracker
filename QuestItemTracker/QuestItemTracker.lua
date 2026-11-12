@@ -1163,6 +1163,36 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     local showIDs = SettingEnabled("showQuestIDs")
     local showFuture = SettingEnabled("showFutureStatusLabels")
     local showLevels = SettingEnabled("showQuestLevels")
+
+    -- Multiple distinct faction/city quests can share the same title and level
+    -- (for example five separate "A Donation of Wool" quests). Compact only
+    -- equivalent presentation rows; never merge underlying IDs, statuses,
+    -- requirements or retention/matching decisions.
+    local function CompactQuestRows(rows)
+        local compact, byKey = {}, {}
+        for _, row in ipairs(rows) do
+            local entry = row.entry or {}
+            local key = table.concat({
+                row.name or "",
+                tostring(row.level or ""),
+                row.status or "",
+                row.color or "",
+                row.rewardOrigin and "reward" or "ordinary",
+                tostring(entry.required or ""),
+                tostring(entry.detail or ""),
+            }, "\031")
+            local existing = byKey[key]
+            if existing then
+                existing.ids[#existing.ids + 1] = row.id
+            else
+                row.ids = { row.id }
+                compact[#compact + 1] = row
+                byKey[key] = row
+            end
+        end
+        return compact
+    end
+
     local function ShowQuestRow(row, grouped)
         local indent = grouped and "    " or "  "
         local nameIndent = grouped and "  " or ""
@@ -1170,6 +1200,9 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             .. (row.rewardOrigin and "Reward from: " or "") .. row.name .. "|r"
         if showLevels then
             nameLine = nameLine .. "  (" .. (row.level and ("Level " .. row.level) or "Level unknown") .. ")"
+        end
+        if #row.ids > 1 then
+            nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
         end
         tooltip:AddLine(nameLine)
 
@@ -1200,7 +1233,10 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         if status or showIDs then
             local statusLine = status and (indent .. status) or indent
             if showIDs then
-                statusLine = statusLine .. (status and "  |  " or "") .. "Quest ID: " .. row.id
+                local idsText = #row.ids > 1
+                    and ("Quest IDs: " .. table.concat(row.ids, ", "))
+                    or ("Quest ID: " .. row.id)
+                statusLine = statusLine .. (status and "  |  " or "") .. idsText
             end
             tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
         end
@@ -1213,14 +1249,14 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         end
     end
 
-    for _, row in ipairs(ordinaryQuests) do ShowQuestRow(row, nil) end
+    for _, row in ipairs(CompactQuestRows(ordinaryQuests)) do ShowQuestRow(row, nil) end
     if #repeatableQuests > 0 then
         tooltip:AddLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
-        for _, row in ipairs(repeatableQuests) do ShowQuestRow(row, "repeatable") end
+        for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
     end
     if #lowLevelQuests > 0 then
         tooltip:AddLine("LOW-LEVEL QUESTS", 0.6, 0.72, 0.84)
-        for _, row in ipairs(lowLevelQuests) do ShowQuestRow(row, "lowLevel") end
+        for _, row in ipairs(CompactQuestRows(lowLevelQuests)) do ShowQuestRow(row, "lowLevel") end
     end
 
     if partial then
