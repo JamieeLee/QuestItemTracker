@@ -968,8 +968,8 @@ end
 local function QuestieDBStatus()
     local ready, detail = QuestieDBReady()
     if ready then
-        return true, "QuestieDB is ready",
-            "QuestieDB is installed, enabled, and providing the quest information QIT needs."
+        return true, "Quest Item Tracker Forever is ready",
+            "QuestieDB: Installed and enabled. It provides the quest information QITF needs."
     end
 
     local exists = SafeCall(C_AddOns and C_AddOns.DoesAddOnExist, "QuestieDB")
@@ -983,30 +983,30 @@ local function QuestieDBStatus()
     end
 
     if exists == false or reason == "MISSING" then
-        return false, "QuestieDB is not installed",
-            "QIT needs the separate QuestieDB addon to find quest items. "
-                .. "CurseForge normally installs it for you. If you installed QIT "
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Not installed. QITF needs QuestieDB to find quest items. "
+                .. "CurseForge normally installs it for you. If you installed QITF "
                 .. "from GitHub, install QuestieDB too, then restart or reload WoW."
     end
 
     local state = SafeCall(C_AddOns and C_AddOns.GetAddOnEnableState, "QuestieDB")
     if state == nil then state = SafeCall(GetAddOnEnableState, "QuestieDB") end
     if reason == "DISABLED" or state == 0 or state == false then
-        return false, "QuestieDB is disabled",
-            "QuestieDB is on your computer but is turned off in WoW. "
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Installed but disabled in WoW. "
                 .. "Enable QuestieDB in the AddOns list, then reload or restart the game."
     end
 
     local loaded = SafeCall(C_AddOns and C_AddOns.IsAddOnLoaded, "QuestieDB")
     if loaded == nil then loaded = SafeCall(IsAddOnLoaded, "QuestieDB") end
     if loaded == false then
-        return false, "QuestieDB did not load",
-            "QuestieDB appears to be installed, but WoW has not loaded it. "
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Installed but not loaded. "
                 .. "Check that it is enabled in the AddOns list and restart or reload WoW."
     end
 
-    return false, "QuestieDB needs attention",
-        "QuestieDB is not providing the quest information QIT needs. "
+    return false, "Quest Item Tracker Forever needs attention",
+        "QuestieDB: Not ready. It's not providing the quest information QITF needs. "
             .. "Make sure you have a compatible version installed and enabled, "
             .. "then reload WoW. " .. tostring(detail or "")
 end
