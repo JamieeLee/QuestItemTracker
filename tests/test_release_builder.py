@@ -85,6 +85,16 @@ class ReleaseBuilderTests(unittest.TestCase):
         metadata = rb.make_curseforge_metadata("0.2", "- Update")
         self.assertIn({"slug": "questiedb", "type": "requiredDependency"}, metadata["relations"]["projects"])
         self.assertEqual(metadata["releaseType"], "release")
+        self.assertEqual(metadata["gameVersions"], [17053])  # Forever 1.60.1 only
+
+    def test_curseforge_never_defaults_to_latest_retail(self):
+        # QIT targets Forever, regardless of any old CI variable values.
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"CF_GAME_VERSION_IDS": "999999"}):
+            metadata = rb.make_curseforge_metadata("0.4", "- New release")
+        self.assertEqual(metadata["gameVersions"], [17053])
+        self.assertEqual(metadata["displayName"], "QIT-v0.4 (WoW Forever)")
 
 
 if __name__ == "__main__":

@@ -129,13 +129,11 @@ def make_curseforge_metadata(version: str, changes: str) -> dict:
         "releaseType": "release",
         "relations": {"projects": [{"slug": "questiedb", "type": "requiredDependency"}]},
     }
-    # Optional explicit CurseForge game version IDs (NOT the WoW TOC interface).
-    # Configure as repo variable if required by the CurseForge project.
-    ids = os.environ.get("CF_GAME_VERSION_IDS", "").strip()
-    if ids:
-        if not re.fullmatch(r"\d+(?:\s*,\s*\d+)*", ids):
-            raise ValueError("CF_GAME_VERSION_IDS must contain comma-separated numeric CurseForge IDs")
-        data["gameVersions"] = [int(x.strip()) for x in ids.split(",")]
+    # CurseForge game version 17053 = WoW Forever 1.60.1 (Interface 16001).
+    # Never let the upload API default to the newest retail WoW version.
+    # This addon is exclusive to Forever; changes require an intentional code
+    # update and regression test, not a repo variable that can drift.
+    data["gameVersions"] = [17053]
     return data
 
 

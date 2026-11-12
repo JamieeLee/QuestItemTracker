@@ -84,7 +84,7 @@ jobs:
   # Only a successful MAIN branch build may publish. PRs just run the tests.
   # A merge with the same version (docs/CI edits) is skipped automatically.
   publish_github:
-    name: Publish version to GitHub (after passing checks)
+    name: Publish version to GitHub + CurseForge (after passing checks)
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: lua
     runs-on: ubuntu-latest
@@ -109,36 +109,47 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+          # GitHub and CurseForge track completion independently. A failed
+          # CurseForge upload is retryable without recreating the GitHub release.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')
-            if [[ "$DRAFT" != "true" ]]; then
-              echo "Published GitHub release $TAG already exists; skipping duplicate."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
+            if [[ "$DRAFT" == "true" ]]; then
+              echo "publish_gh=true" >> "$GITHUB_OUTPUT"
+              echo "draft_exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "GitHub release $TAG already published; will not create another."
+              echo "publish_gh=false" >> "$GITHUB_OUTPUT"
+              echo "draft_exists=false" >> "$GITHUB_OUTPUT"
             fi
-            # A draft is NOT a published release. Finish it with the tested
-            # ZIP and mandatory QuestieDB notes, rather than making a duplicate.
-            echo "draft_exists=true" >> "$GITHUB_OUTPUT"
           else
+            echo "publish_gh=true" >> "$GITHUB_OUTPUT"
             echo "draft_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Never move an existing tag. Existing tags without a release can be
-          # recovered only when they already point to exactly this commit.
+          # Never silently replace a release tag or publish an untested commit.
           if TAG_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null); then
-            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
-              echo "::warning::Tag $TAG points at $TAG_SHA (not $GITHUB_SHA). Skipping; a release must never silently retag existing code."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              exit 0
+            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]] &&
+               ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::Existing version tag $TAG points at a different commit."
+              exit 1
             fi
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+          # A separate lightweight tag records a *successful* CurseForge upload.
+          # GitHub's tag-push workflow only matches vX.Y tags, not these markers.
+          # CI-only merges and reruns won't upload the same release again.
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/curseforge-${TAG}" >/dev/null 2>&1; then
+            echo "CurseForge already uploaded $TAG; skipping duplicate."
+            echo "publish_cf=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_cf=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build single installable ZIP and required-QuestieDB release notes
-        if: steps.release.outputs.publish == 'true'
+        if: steps.release.outputs.publish_gh == 'true' || steps.release.outputs.publish_cf == 'true'
         shell: bash
         env:
           TAG: ${{ steps.release.outputs.tag }}
@@ -150,7 +161,7 @@ jobs:
           grep -Fq 'QuestieDB is REQUIRED' dist/release-notes.md
 
       - name: Create version tag and publish GitHub release
-        if: steps.release.outputs.publish == 'true'
+        if: steps.release.outputs.publish_gh == 'true'
         shell: bash
         env:
           TAG: ${{ steps.release.outputs.tag }}
@@ -179,4 +190,62 @@ jobs:
               --notes-file dist/release-notes.md \
               --repo "$GITHUB_REPOSITORY"
           fi
-          echo "Published GitHub release $TAG from $GITHUB_SHA; CurseForge untouched."
+          echo "Published GitHub release $TAG from $GITHUB_SHA."
+
+      - name: Upload the same version ZIP and patch notes to CurseForge automatically
+        if: steps.release.outputs.publish_cf == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          GH_PUBLISH: ${{ steps.release.outputs.publish_gh }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID || secrets.CF_PROJECT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Configuration problems MUST fail visibly, not silently skip releases.
+          [[ -n "$CF_API_TOKEN" ]] || { echo "::error::Missing secret CF_API_TOKEN"; exit 1; }
+          [[ "$CF_PROJECT_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing or invalid CF_PROJECT_ID"; exit 1; }
+
+          FILE="dist/QITForeverV${VERSION}.zip"
+          # When backfilling CurseForge for an already published GitHub release,
+          # download the exact existing asset rather than repackaging different bytes.
+          if [[ "$GH_PUBLISH" != "true" ]]; then
+            rm -f "$FILE"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "QITForeverV${VERSION}.zip" --dir dist
+          fi
+          unzip -t "$FILE"
+
+          # Fail before any upload if another game version sneaks into metadata.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path("dist/curseforge-metadata.json").read_text())
+          assert metadata.get("gameVersions") == [17053], "Must target WoW Forever 1.60.1 only"
+          print("CurseForge target locked: WoW Forever 1.60.1")
+          PY
+
+          curl --fail-with-body --show-error --silent --retry 2 \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F 'metadata=<dist/curseforge-metadata.json' \
+            -F "file=@${FILE};type=application/zip" \
+            "https://wow.curseforge.com/api/projects/${CF_PROJECT_ID}/upload-file" \
+            --output dist/curseforge-response.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          response = json.loads(Path("dist/curseforge-response.json").read_text())
+          file_id = response.get("id") if isinstance(response, dict) else None
+          if not isinstance(file_id, int) or file_id <= 0:
+              raise SystemExit("CurseForge did not return a valid file ID; no success marker created")
+          print(f"CurseForge accepted file ID {file_id}")
+          PY
+
+          # Commit-independent marker makes reruns and later CI-only merges
+          # idempotent, without additional Markdown files or release ZIPs.
+          RELEASE_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha')
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/curseforge-${TAG}" -f sha="$RELEASE_SHA" >/dev/null
+          echo "CurseForge upload recorded for $TAG."
