@@ -2,7 +2,7 @@
 _G.QuestItemTrackerDB = nil
 _G.C_AddOns = {GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.4' end
+  if key=='Version' then return '0.5' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -96,7 +96,25 @@ _G.Enum={TooltipDataType={Item=222}}
 _G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
 _G.GameTooltip={lines={},scripts={}}
 function GameTooltip:HookScript(event,fn) self.scripts[event]=fn end
-function GameTooltip:AddLine(line) self.lines[#self.lines+1]=line end
+local function tooltipFontString(value)
+  return {text=value,height=14,
+    GetText=function(self)return self.text end,
+    SetText=function(self,v)self.text=v end,
+    GetHeight=function(self)return self.height end,
+    SetHeight=function(self,v)self.height=v end,
+  }
+end
+function GameTooltip:GetName()return "GameTooltip" end
+function GameTooltip:NumLines()return #self.lines end
+function GameTooltip:AddLine(line)
+  self.lines[#self.lines+1]=line
+  _G["GameTooltipTextLeft"..#self.lines]=tooltipFontString(line)
+  _G["GameTooltipTextRight"..#self.lines]=tooltipFontString("")
+end
+function GameTooltip:AddDoubleLine(left,right)
+  self:AddLine(left)
+  _G["GameTooltipTextRight"..#self.lines]:SetText(right)
+end
 function GameTooltip:GetItem() return nil,nil end
 function GameTooltip:Show() self.shown=true end
 function GameTooltip:Hide() self.shown=false end
@@ -134,7 +152,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.4' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.5' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -150,17 +168,50 @@ end
 assert(matchedIcon,'minimap button must use the custom matching quest-book icon')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
-assert(#checks==6,'expected six settings switches')
+assert(#checks==7,'expected seven settings switches')
 assert(checks[1]:GetChecked(),'faction filter should be enabled by default')
-assert(not checks[6]:GetChecked(),'future labels must be hidden by default')
-assert(checks[2]:GetChecked()==false and checks[3]:GetChecked()==false,'IDs must be off by default')
-assert(checks[4]:GetChecked() and checks[5]:GetChecked(),'levels/count breakdown must be on by default')
+assert(not checks[7]:GetChecked(),'future labels must be hidden by default')
+assert(not checks[2]:GetChecked(),'other addon IDs must stay visible by default')
+assert(checks[3]:GetChecked()==false and checks[4]:GetChecked()==false,'QIT IDs must be off by default')
+assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown must be on by default')
 local function tooltip(id)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then GameTooltip.scripts.OnTooltipCleared(GameTooltip) end
   typedHook(GameTooltip,{id=id,type=222})
   return table.concat(GameTooltip.lines,'\n')
 end
+-- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
+local function withExternalIDs()
+  GameTooltip:ClearLines()
+  GameTooltip:AddDoubleLine('ItemID','4894')
+  GameTooltip:AddDoubleLine('IconID','132919')
+  typedHook(GameTooltip,{id=4894,type=222})
+  return _G.GameTooltipTextLeft1,_G.GameTooltipTextRight1,
+         _G.GameTooltipTextLeft2,_G.GameTooltipTextRight2
+end
+local a,b,c,d=withExternalIDs()
+assert(a:GetText()=='ItemID' and b:GetText()=='4894' and c:GetText()=='IconID' and d:GetText()=='132919',
+  'external IDs must remain visible when suppression is off')
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
+a,b,c,d=withExternalIDs()
+assert(a:GetText()=='' and b:GetText()=='' and c:GetText()=='' and d:GetText()=='',
+  'opt-in suppression must hide both sides of external metadata rows')
+assert(a:GetHeight()==0 and c:GetHeight()==0,'hidden ID rows must not occupy full height')
+-- QIT's own IDs are independently controlled, even while external IDs are hidden.
+checks[3]:SetChecked(true);checks[3].scripts.OnClick(checks[3])
+checks[4]:SetChecked(true);checks[4].scripts.OnClick(checks[4])
+a,b,c,d=withExternalIDs()
+local ownIDs=table.concat(GameTooltip.lines,'\\n')
+assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID was suppressed')
+assert(ownIDs:find('Quest ID: 821',1,true),'QIT quest ID was suppressed')
+assert(a:GetText()=='' and c:GetText()=='','external metadata visible while suppression enabled')
+checks[3]:SetChecked(false);checks[3].scripts.OnClick(checks[3])
+checks[4]:SetChecked(false);checks[4].scripts.OnClick(checks[4])
+checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
+a,b,c,d=withExternalIDs()
+assert(a:GetText()=='ItemID' and c:GetText()=='IconID',
+  'turning off external suppression must leave the other addon metadata alone')
+-- This toggle changes only tooltip presentation, never quest-matching logic.
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
 assert(clean:find('Grey Forager',1,true),'grey quest name must remain visible')
@@ -201,7 +252,7 @@ assert(clean:find('(Level 15)',1,true),'quest level should appear by default')
 assert(not clean:find('Quest ID:',1,true) and not clean:find('Item ID:',1,true),'IDs visible by default')
 assert(clean:find('Bags: 3 | Bank: 2',1,true),'default bank counts missing')
 assert(tooltip(6948)=='','ordinary item was decorated')
-checks[6]:SetChecked(true);checks[6].scripts.OnClick(checks[6])
+checks[7]:SetChecked(true);checks[7].scripts.OnClick(checks[7])
 local detailedFuture=tooltip(4894)
 assert(detailedFuture:find('FUTURE QUEST',1,true),'optional future quest status not restored')
 assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:find('FUTURE USE · GREY QUEST',1,true),
@@ -209,9 +260,9 @@ assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:fin
 assert(detailedFuture:find('REPEATABLE QUESTS',1,true) and occurrences(detailedFuture,'REPEATABLE QUEST')==1,
   'repeatable heading should not duplicate its per-quest label in detailed mode')
 assert(detailedFuture:find('No current quest needs',1,true),'optional future footer not restored')
-checks[6]:SetChecked(false);checks[6].scripts.OnClick(checks[6])
+checks[7]:SetChecked(false);checks[7].scripts.OnClick(checks[7])
 assert(not tooltip(4894):find('FUTURE QUEST',1,true),'future status does not turn off')
-for _,i in ipairs({2,3}) do
+for _,i in ipairs({3,4}) do
   checks[i]:SetChecked(true);checks[i].scripts.OnClick(checks[i])
 end
 local detailed=tooltip(4894)
@@ -219,7 +270,7 @@ assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
 assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
   'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
-for _,i in ipairs({4,5}) do
+for _,i in ipairs({5,6}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
 end
 local compact=tooltip(4894)
