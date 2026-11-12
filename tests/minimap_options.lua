@@ -102,7 +102,7 @@ local function MockFrame(kind,name,parent)
   function f:SetTexture(texture) self.texture=texture end
   function f:SetVertexColor(r,g,b,a) self.vertexColor={r,g,b,a} end
   function f:SetTextColor(r,g,b,a) self.textColor={r,g,b,a} end
-  function f:SetColorTexture() end
+  function f:SetColorTexture(r,g,b,a) self.color={r,g,b,a} end
   function f:SetTexCoord() end
   function f:CreateTexture() return MockFrame('Texture',nil,self) end
   function f:CreateFontString() return MockFrame('FontString',nil,self) end
@@ -172,6 +172,33 @@ button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'minimap button did not open settings')
+
+-- The out-of-box QITF theme should feel like Warcraft, not neon-blue UI.
+-- Native templates (close, reset, checkboxes) remain available for UI skins.
+local panelTextures={}
+for _,f in ipairs(frames) do
+  if f.kind=='Texture' and f.parent==panel and f.color then
+    panelTextures[#panelTextures+1]=f
+  end
+end
+local hasWarmTrim,hasCharcoal,hasQuietBand,hasGoldStripe=false,false,false,false
+for _,f in ipairs(panelTextures) do
+  local r,g,b=f.color[1],f.color[2],f.color[3]
+  if r>g and g>b and r>0.3 and r<0.6 then hasWarmTrim=true end
+  if r<0.09 and g<0.09 and b<0.09 then hasCharcoal=true end
+  if r>g and g>b and r>0.1 and r<0.2 then hasQuietBand=true end
+  if r>0.6 and r>g and g>b then hasGoldStripe=true end
+end
+assert(hasWarmTrim and hasCharcoal and hasQuietBand and hasGoldStripe,
+  'default settings frame needs warm gold trim, charcoal base, and quiet title accent')
+local nativeClose=false
+for _,f in ipairs(frames) do
+  if f.kind=='Button' and f.parent==panel and f.scripts.OnClick and
+     f~=panel then
+    nativeClose=true
+  end
+end
+assert(nativeClose,'settings must retain its standard close button')
 
 -- A small dot with a plain-English reason when QuestieDB is missing or disabled.
 local statusLight
