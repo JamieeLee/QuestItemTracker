@@ -76,6 +76,13 @@ local function MockFrame(kind,name,parent)
   local f={kind=kind,name=name,parent=parent,scripts={},events={},points={},shown=true}
   function f:RegisterEvent(event) self.events[event]=true end
   function f:SetScript(event,fn) self.scripts[event]=fn end
+  function f:HookScript(event,fn)
+    local previous=self.scripts[event]
+    self.scripts[event]=function(...)
+      if previous then previous(...) end
+      fn(...)
+    end
+  end
   function f:GetScript(event) return self.scripts[event] end
   function f:Show() self.shown=true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
   function f:Hide() self.shown=false end
@@ -112,7 +119,15 @@ end
 _G.CreateFrame=MockFrame
 _G.UIParent=MockFrame('Frame','UIParent')
 _G.Minimap=MockFrame('Frame','Minimap')
+Minimap:SetSize(140,140)
 function Minimap:GetCenter() return 500,500 end
+function Minimap:GetWidth() return self.w end
+function Minimap:GetHeight() return self.h end
+function Minimap:GetEffectiveScale() return 1 end
+local minimapShape='ROUND'
+_G.GetMinimapShape=function() return minimapShape end
+local cursorX,cursorY=590,540
+_G.GetCursorPosition=function() return cursorX,cursorY end
 local typedHook
 _G.Enum={TooltipDataType={Item=222}}
 _G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
@@ -168,6 +183,33 @@ local button
 for _, f in ipairs(frames) do if f.name=='QITMinimapButton' then button=f end end
 assert(button,'minimap bubble not created at login')
 assert(button.scripts.OnClick,'minimap bubble has no click behavior')
+local function checkButtonOnRim(radiusX,radiusY)
+  local p=button.points[#button.points]
+  assert(p and p[1]=='CENTER' and p[2]==Minimap and p[3]=='CENTER',
+    'QITF minimap button must anchor to the minimap center like LibDBIcon')
+  local normalized=(p[4]/radiusX)^2+(p[5]/radiusY)^2
+  assert(math.abs(normalized-1)<0.002,
+    'QITF minimap button must stay on the outer rim, not inside the map')
+  return p
+end
+local startRim=checkButtonOnRim(75,75)
+assert(startRim[4]>0 and startRim[5]<0,
+  'default minimap position should be lower-right')
+-- BigWigs classic icon geometry: small book, background and standard ring.
+local foundBook,foundBackground,foundBorder=false,false,false
+for _, f in ipairs(frames) do
+  if f.parent==button and f.kind=='Texture' then
+    if f.texture=='Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon' then
+      foundBook=f.w==18 and f.h==18 and f.points[1][1]=='TOPLEFT'
+    elseif f.texture=='Interface\\Minimap\\UI-Minimap-Background' then
+      foundBackground=f.w==20 and f.h==20
+    elseif f.texture=='Interface\\Minimap\\MiniMap-TrackingBorder' then
+      foundBorder=f.w==53 and f.h==53 and f.points[1][1]=='TOPLEFT'
+    end
+  end
+end
+assert(foundBook and foundBackground and foundBorder,
+  'QITF minimap artwork should align with standard addon buttons')
 button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
@@ -452,11 +494,42 @@ assert(restored:find('(Level 15)',1,true),'reset did not show quest levels')
 assert(restored:find('Bags: 3 | Bank: 2',1,true),'reset did not show breakdown')
 assert(not restored:find('FUTURE QUEST',1,true),'reset did not hide future labels')
 assert(restored:find('LOW-LEVEL QUESTS',1,true),'reset did not keep low-level group')
+-- Cursor drag follows the minimap rim live, and the direction persists.
+cursorX,cursorY=450,610
 button.scripts.OnDragStart(button)
+assert(type(button.scripts.OnUpdate)=='function',
+  'minimap button should orbit during drag instead of moving freely')
+button.scripts.OnUpdate(button)
+local dragged=checkButtonOnRim(75,75)
+assert(dragged[4]<0 and dragged[5]>0,
+  'drag must follow cursor into upper-left quadrant')
 button.scripts.OnDragStop(button)
+assert(button.scripts.OnUpdate==nil,
+  'drag must stop updating when released')
 assert(type(QuestItemTrackerDB.settings.minimapX)=='number','minimap position not saved')
 assert(type(QuestItemTrackerDB.settings.minimapY)=='number','minimap position not saved')
-assert(not button.moving,'drag left the button in moving state')
+local oldDirectionX=QuestItemTrackerDB.settings.minimapX
+local oldDirectionY=QuestItemTrackerDB.settings.minimapY
+
+-- The ring grows or shrinks with UI skins; don't reuse fixed pixel offsets.
+Minimap:SetSize(200,200)
+assert(type(Minimap.scripts.OnSizeChanged)=='function',
+  'minimap resize must trigger a new button position')
+Minimap.scripts.OnSizeChanged(Minimap,200,200)
+checkButtonOnRim(105,105)
+assert(QuestItemTrackerDB.settings.minimapX==oldDirectionX and
+  QuestItemTrackerDB.settings.minimapY==oldDirectionY,
+  'resizing the map must not change the saved drag direction')
+
+minimapShape='SQUARE'
+Minimap.scripts.OnSizeChanged(Minimap,200,200)
+local square=button.points[#button.points]
+assert(math.max(math.abs(square[4]),math.abs(square[5]))>104,
+  'square minimap skins should place the icon along the outer square perimeter')
+minimapShape='ROUND'
+Minimap:SetSize(140,140)
+Minimap.scripts.OnSizeChanged(Minimap,140,140)
+checkButtonOnRim(75,75)
 
 -- Unlike closing/reopening one Frame, a UI reload recreates the frame.
 -- Preserve only account-wide SavedVariables, then load addon Lua again.
