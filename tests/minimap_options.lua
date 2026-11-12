@@ -100,6 +100,7 @@ local function MockFrame(kind,name,parent)
   function f:SetWidth() end
   function f:SetAllPoints() end
   function f:SetTexture(texture) self.texture=texture end
+  function f:SetVertexColor(r,g,b,a) self.vertexColor={r,g,b,a} end
   function f:SetTextColor(r,g,b,a) self.textColor={r,g,b,a} end
   function f:SetColorTexture() end
   function f:SetTexCoord() end
@@ -177,11 +178,14 @@ local statusLight
 for _,f in ipairs(frames) do
   if f.name=='QITQuestieDBStatus' then statusLight=f end
 end
-assert(statusLight and statusLight.parent==panel and statusLight.label,
+assert(statusLight and statusLight.parent==panel and statusLight.dot,
   'dependency light missing or placed outside settings panel')
+assert(statusLight.dot.kind=='Texture' and statusLight.dot.texture==
+  'Interface\\AddOns\\QuestItemTracker\\Media\\StatusCircle',
+  'dependency light should use the dedicated round texture, not a square font glyph')
 assert(statusLight.w==20 and statusLight.h==20,
   'dependency light must stay small and unobtrusive')
-assert(statusLight.label.textColor and statusLight.label.textColor[2]>0.8,
+assert(statusLight.dot.vertexColor and statusLight.dot.vertexColor[2]>0.8,
   'working QuestieDB must show a green status light')
 
 local function testStatusHover(title,needle)
@@ -205,14 +209,14 @@ local previousLib,previousQuestDB=LibQuestieDB,QuestDB
 questieEnabled,questieLoaded=false,false
 LibQuestieDB=nil
 panel:Hide();panel:Show()
-assert(statusLight.label.textColor[1]>0.9 and statusLight.label.textColor[2]<0.5,
+assert(statusLight.dot.vertexColor[1]>0.9 and statusLight.dot.vertexColor[2]<0.5,
   'disabled QuestieDB must show a red status light')
 testStatusHover('QuestieDB is disabled','Enable QuestieDB in the AddOns list')
 
 -- The raw GitHub ZIP was installed without reading QuestieDB requirements.
 questieInstalled=false
 panel:Hide();panel:Show()
-assert(statusLight.label.textColor[1]>0.9,'missing QuestieDB must stay red')
+assert(statusLight.dot.vertexColor[1]>0.9,'missing QuestieDB must stay red')
 testStatusHover('QuestieDB is not installed','CurseForge normally installs it')
 
 -- QuestieDB is installed but not loaded.
@@ -229,7 +233,7 @@ testStatusHover('QuestieDB needs attention','compatible version')
 -- Once QuestieDB loads correctly, QIT returns to green without a reload.
 LibQuestieDB,QuestDB=previousLib,previousQuestDB
 main.scripts.OnEvent(main,'ADDON_LOADED','QuestieDB')
-assert(statusLight.label.textColor[2]>0.8,'light did not turn green when QuestieDB loaded')
+assert(statusLight.dot.vertexColor[2]>0.8,'light did not turn green when QuestieDB loaded')
 testStatusHover('QuestieDB is ready','providing the quest information')
 
 local toc=assert(io.open('QuestItemTracker/QuestItemTracker.toc','r'))
