@@ -982,11 +982,11 @@ local function CreateOptionsPanel()
     local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
     idsHeading:SetText("ID DISPLAY")
-    idsHeading:SetTextColor(0.4, 0.78, 1, 1)
+    if type(idsHeading.SetTextColor) == "function" then idsHeading:SetTextColor(0.4, 0.78, 1, 1) end
     local detailsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     detailsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -263)
     detailsHeading:SetText("OTHER DETAILS")
-    detailsHeading:SetTextColor(0.4, 0.78, 1, 1)
+    if type(detailsHeading.SetTextColor) == "function" then detailsHeading:SetTextColor(0.4, 0.78, 1, 1) end
     local checkboxes = {}
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
