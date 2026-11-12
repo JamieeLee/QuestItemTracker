@@ -67,8 +67,8 @@ class ReleaseBuilderTests(unittest.TestCase):
         # the implementation research behind a minimap alignment fix.
         for name in ("BigWigs", "LibDBIcon"):
             (self.root / "CHANGELOG.md").write_text(
-                f"# Changelog\\n\\n## [0.2] - 2026-11-11\\n\\n"
-                f"- Fixed ring alignment by copying {name} positioning.\\n"
+                f"# Changelog\n\n## [0.2] - 2026-11-11\n\n"
+                f"- Fixed ring alignment by copying {name} positioning.\n"
             )
             with self.assertRaisesRegex(ValueError, "development-only reference"):
                 rb.current_changes(self.root, "0.2")
