@@ -41,28 +41,40 @@ def current_changes(root: Path, version: str) -> str:
     changes = text[start:stop].strip()
     if not changes:
         raise ValueError(f"CHANGELOG.md entry for {version} has no release notes")
+    # Release notes are public product documentation, not a record of which
+    # other addons or codebases we consulted during development.
+    for name in ("BigWigs", "LibDBIcon"):
+        if name.lower() in changes.lower():
+            raise ValueError(f"Remove development-only reference from public release notes: {name}")
     return changes
 
 
 def release_notes(version: str, changes: str) -> str:
-    # Dependency block is intentionally unconditional: can't forget it on a release.
-    return (f"# QIT-v{version} — Quest Item Tracker Forever\n\n"
-            "Quest Item Tracker Forever adds quest associations, inventory counts, and item guidance directly to tooltips.\n\n"
-            "## Required Dependency — QuestieDB\n\n"
-            "**QuestieDB is REQUIRED.** Install and enable the standalone "
-            f"[QuestieDB addon]({DEPENDENCY_URL}) alongside Quest Item Tracker Forever.\n\n"
+    # This exact player-facing body is used on GitHub and CurseForge.
+    # Keep installation guidance valid on BOTH platforms.
+    return (f"# Quest Item Tracker Forever (QITF) — v{version}\n\n"
+            "Quest Item Tracker Forever adds quest information, item counts, and "
+            "NEEDED / KEEP / SAFE TO DELETE guidance to item tooltips.\n\n"
+            "## Required dependency: QuestieDB\n\n"
+            "**QuestieDB is REQUIRED.** The separate "
+            f"[QuestieDB addon]({DEPENDENCY_URL}) must be installed and enabled.\n\n"
+            "CurseForge should install QuestieDB automatically when you install QITF through "
+            "its app. If installing the GitHub ZIP manually, install QuestieDB separately.\n\n"
             "**Full Questie is NOT required.** Only QuestieDB is needed.\n\n"
-            "## Changes in this version\n\n"
+            "## What's new in this version\n\n"
             f"{changes}\n\n"
-            "## Installation\n\n"
-            f"1. Download **`{PREFIX}{version}.zip`** from the Assets section below.\n"
-            "2. Extract it into your WoW Forever `Interface/AddOns` folder.\n"
-            "3. Verify the path is `Interface/AddOns/QuestItemTracker/QuestItemTracker.toc`.\n"
-            "4. Install and enable standalone **QuestieDB**, then enable **Quest Item Tracker Forever**.\n"
-            "5. Log in; QIT initializes automatically. Use `/qit options` for settings.\n\n"
+            "## Installation and updates\n\n"
+            "**CurseForge app:** Install or update Quest Item Tracker Forever. "
+            "Verify that QuestieDB is enabled in WoW's AddOns menu.\n\n"
+            f"**Manual ZIP:** Download `{PREFIX}{version}.zip` from this version's GitHub release, "
+            "extract the `QuestItemTracker` folder into WoW Forever's "
+            "`Interface/AddOns` directory, and install QuestieDB separately.\n\n"
+            "You should have `Interface/AddOns/QuestItemTracker/QuestItemTracker.toc`. "
+            "Log in and open settings using `/qit options`.\n\n"
             "## Important\n\n"
-            "QIT never deletes, sells, or moves items. Item recommendations depend on available QuestieDB "
-            "and game-client information, which may be incomplete for custom server quests or non-quest uses.\n\n"
+            "QITF never deletes, sells, or moves your items. Its guidance depends on "
+            "available QuestieDB and game-client information and may not cover "
+            "custom server quests or unrelated item uses. When unsure, keep the item.\n\n"
             "**Author:** JamieeLee · **License:** GPL-3.0\n")
 
 
@@ -78,6 +90,23 @@ def create_package(root: Path, output: Path, version: str):
     required = [addon_dir / f"{ADDON}.toc", addon_dir / f"{ADDON}.lua", addon_dir / "README.txt"]
     if any(not p.is_file() for p in required):
         raise ValueError("Required addon file missing (TOC, Lua, README.txt)")
+
+    # Never ship a new icon reference without its actual texture. This is
+    # checked before release notes or publication, including in PR test ZIPs.
+    lua_source = (addon_dir / f"{ADDON}.lua").read_text(encoding="utf-8")
+    if "QIT_BADGE_TEXTURE" in lua_source:
+        for name, size in (("QITForeverBadge.tga", 32), ("QITIcon.tga", 64),
+                           ("StatusCircle.tga", 32)):
+            art = addon_dir / "Media" / name
+            if not art.is_file():
+                raise ValueError(f"Required UI artwork missing: {art.relative_to(root)}")
+            data = art.read_bytes()
+            if len(data) < 18 + size * size * 4 or data[:3] != bytes([0, 0, 2]) or data[16] != 32 or (
+                int.from_bytes(data[12:14], "little") != size
+                or int.from_bytes(data[14:16], "little") != size
+            ):
+                raise ValueError(f"Invalid {size}x{size} BGRA UI artwork: {art.relative_to(root)}")
+
     license_file = root / "LICENSE"
     if not license_file.is_file():
         raise ValueError("Root LICENSE file is required for the installable package")
@@ -125,7 +154,7 @@ def make_curseforge_metadata(version: str, changes: str) -> dict:
     data = {
         "changelog": release_notes(version, changes),
         "changelogType": "markdown",
-        "displayName": f"QIT-v{version} (WoW Forever)",
+        "displayName": f"QITF-v{version} (WoW Forever)",
         "releaseType": "release",
         "relations": {"projects": [{"slug": "questiedb", "type": "requiredDependency"}]},
     }

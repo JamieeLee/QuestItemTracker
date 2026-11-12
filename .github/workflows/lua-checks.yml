@@ -79,6 +79,16 @@ jobs:
           name: QITForeverV${{ steps.build.outputs.version }}-test
           path: dist/staging/
           if-no-files-found: error
+      # Review the EXACT notes that GitHub and CurseForge will receive before
+      # approving the merge. These are generated outputs, not extra repo MDs.
+      - name: Upload release notes preview for human review
+        uses: actions/upload-artifact@v4
+        with:
+          name: QITForeverV${{ steps.build.outputs.version }}-release-notes-preview
+          path: |
+            dist/release-notes.md
+            dist/curseforge-metadata.json
+          if-no-files-found: error
 
 
   # Only a successful MAIN branch build may publish. PRs just run the tests.
@@ -172,7 +182,7 @@ jobs:
           set -euo pipefail
           # GitHub's GITHUB_TOKEN-created tag does not trigger the separate
           # tag-push release workflow, so this job publishes GitHub only.
-          # CurseForge remains an explicit/manual release choice.
+          # CurseForge publishes automatically after the GitHub release succeeds.
           if [[ "$TAG_EXISTS" != "true" ]]; then
             gh api -X POST "repos/${GITHUB_REPOSITORY}/git/refs" \
               -f ref="refs/tags/${TAG}" -f sha="$GITHUB_SHA" >/dev/null

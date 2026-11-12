@@ -2,9 +2,10 @@
 ## Title: Quest Item Tracker Forever
 ## Notes: Requires QuestieDB. Track quest items; click the minimap button to customize tooltips.
 ## Author: JamieeLee
-## Version: 0.4
-## Dependencies: QuestieDB
+## Version: 0.5
+## OptionalDeps: QuestieDB
 ## IconTexture: Interface\AddOns\QuestItemTracker\Media\QITIcon
+## LoadSavedVariablesFirst: 1
 ## SavedVariables: QuestItemTrackerDB
 
 QuestItemTracker.lua

@@ -2,16 +2,23 @@
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
-QuestItemTrackerDB = QuestItemTrackerDB or {}
-
-local DB = QuestItemTrackerDB
-DB.version = 4
-DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login for this character.
-DB.events = DB.events or {}
-DB.items = DB.items or {}
-DB.characters = DB.characters or {}
--- Tooltip preferences are shared across the account; quest history stays character-scoped.
-DB.settings = type(DB.settings) == "table" and DB.settings or {}
+-- Always bind to the actual SavedVariables table. On clients that load
+-- SavedVariables AFTER addon Lua runs, the table initially created here is
+-- temporary and WoW replaces the global before ADDON_LOADED. If closures
+-- capture that temporary table, settings appear to work but vanish on /reload.
+local DB
+local function AttachSavedVariables()
+    if type(QuestItemTrackerDB) ~= "table" then QuestItemTrackerDB = {} end
+    DB = QuestItemTrackerDB
+    DB.version = 4
+    DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login.
+    DB.events = DB.events or {}
+    DB.items = DB.items or {}
+    DB.characters = DB.characters or {}
+    -- Preferences are account-wide; quest history stays character-scoped.
+    DB.settings = type(DB.settings) == "table" and DB.settings or {}
+end
+AttachSavedVariables()
 local CHARACTER_DATA
 local completedQuestSnapshot -- fallback when IsQuestFlaggedCompleted is unavailable
 
@@ -801,6 +808,7 @@ end
 local DEFAULT_SETTINGS = {
     showQuestIDs = false,
     showItemIDs = false,
+    suppressExternalIDs = false,
     showQuestLevels = true,
     showInventoryBreakdown = true,
     showFutureStatusLabels = false,
@@ -810,6 +818,70 @@ local function SettingEnabled(key)
     local value = DB.settings[key]
     if value == nil then return DEFAULT_SETTINGS[key] == true end
     return value == true
+end
+
+-- This optional filter only touches isolated technical ID rows that another
+-- addon put on a shared item tooltip. It never modifies QIT's own ID settings,
+-- and stops at the QIT header so QIT-generated lines are left untouched.
+-- Tooltip font strings are reused by WoW, so restore adjusted heights on reset.
+local EXTERNAL_ID_KINDS = {
+    itemid = true, iconid = true, questid = true, spellid = true,
+    npcid = true, textureid = true, modelid = true,
+}
+local suppressedLineHeights = setmetatable({}, { __mode = "k" })
+
+local function RestoreExternalIDHeights(tooltip)
+    local stored = suppressedLineHeights[tooltip]
+    if not stored then return end
+    for fontString, height in pairs(stored) do
+        if type(height) == "number" and height > 0 then
+            SafeCall(fontString.SetHeight, fontString, height)
+        end
+    end
+    suppressedLineHeights[tooltip] = nil
+end
+
+local function SuppressExternalTooltipIDs(tooltip)
+    if not SettingEnabled("suppressExternalIDs") or not tooltip then return end
+    -- Standard GameTooltip exposes named TextLeftN/TextRightN font strings.
+    -- Do not guess at the internals of arbitrary custom tooltip frames.
+    local name = SafeCall(tooltip.GetName, tooltip)
+    local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
+    if type(name) ~= "string" or name == "" or not count then return end
+    local stored = suppressedLineHeights[tooltip]
+    for index = 1, math.min(count, 100) do
+        local left = _G[name .. "TextLeft" .. index]
+        local line = left and SafeCall(left.GetText, left)
+        if type(line) == "string" and line ~= "" then
+            if string.find(line, "Quest Item Tracker Forever", 1, true) then
+                break
+            end
+            -- A full metadata row, not explanatory prose containing "item id".
+            local clean = string.gsub(line, "|c%x%x%x%x%x%x%x%x", "")
+            clean = string.gsub(clean, "|r", "")
+            clean = string.gsub(clean, "^%s+", "")
+            clean = string.gsub(clean, "%s+$", "")
+            local label = string.match(clean, "^([%a%s]+)%s*:%s*%d*$")
+                or string.match(clean, "^([%a%s]+)%s+%d+$")
+                or string.match(clean, "^([%a%s]+)$")
+            local normalized = label and string.lower(string.gsub(label, "%s+", ""))
+            if normalized and EXTERNAL_ID_KINDS[normalized] then
+                local right = _G[name .. "TextRight" .. index]
+                stored = stored or {}
+                for _, fontString in ipairs({left, right}) do
+                    if fontString and type(fontString.SetText) == "function" then
+                        local height = SafeCall(fontString.GetHeight, fontString)
+                        if type(height) == "number" and height > 0 and stored[fontString] == nil then
+                            stored[fontString] = height
+                            SafeCall(fontString.SetHeight, fontString, 0)
+                        end
+                        SafeCall(fontString.SetText, fontString, "")
+                    end
+                end
+            end
+        end
+    end
+    if stored then suppressedLineHeights[tooltip] = stored end
 end
 
 -- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
@@ -849,7 +921,10 @@ end
 
 local optionsPanel
 local minimapButton
+local questieDBStatusLight
 local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
+local QIT_BADGE_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITForeverBadge"
+local QIT_STATUS_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\StatusCircle"
 
 local function SetSolidColor(texture, r, g, b, a)
     if type(texture.SetColorTexture) == "function" then
@@ -859,66 +934,284 @@ local function SetSolidColor(texture, r, g, b, a)
     end
 end
 
+-- Save the panel's center as offsets from UIParent, rather than absolute
+-- screen coordinates. This survives /reload and ordinary UI-scale changes.
+-- Missing or invalid SavedVariables fall back to the original centered layout.
+local function RestoreOptionsPanelPosition(panel)
+    local position = DB.settings.optionsPanelPosition
+    local x = type(position) == "table" and tonumber(position.x) or nil
+    local y = type(position) == "table" and tonumber(position.y) or nil
+    if not x or x ~= x or math.abs(x) > 10000 or
+        not y or y ~= y or math.abs(y) > 10000 then
+        x, y = 0, 45
+    end
+    panel:ClearAllPoints()
+    panel:SetPoint("CENTER", UIParent, "CENTER", x, y)
+end
+
+local function SaveOptionsPanelPosition(panel)
+    local cx, cy = SafeCall(panel.GetCenter, panel)
+    local ux, uy = SafeCall(UIParent and UIParent.GetCenter, UIParent)
+    if type(cx) ~= "number" or type(cy) ~= "number" or
+        type(ux) ~= "number" or type(uy) ~= "number" then return end
+
+    local panelScale = SafeCall(panel.GetEffectiveScale, panel) or 1
+    local parentScale = SafeCall(UIParent.GetEffectiveScale, UIParent) or 1
+    if type(panelScale) ~= "number" or type(parentScale) ~= "number" or
+        panelScale <= 0 or parentScale <= 0 then return end
+
+    -- GetCenter values are in each frame's own scale. Convert to parent units
+    -- before storing offsets for SetPoint relative to UIParent's center.
+    local x = (cx * panelScale - ux * parentScale) / parentScale
+    local y = (cy * panelScale - uy * parentScale) / parentScale
+    if x == x and y == y and math.abs(x) <= 10000 and math.abs(y) <= 10000 then
+        DB.settings.optionsPanelPosition = { x = x, y = y }
+    end
+end
+
+-- CurseForge declares QuestieDB as REQUIRED for automatic installation.
+-- The WoW TOC uses OptionalDeps instead, because a hard dependency would stop
+-- QIT itself from loading when a manual ZIP user forgets QuestieDB; that would
+-- make the missing-dependency warning impossible to show.
+local function QuestieDBStatus()
+    local ready, detail = QuestieDBReady()
+    if ready then
+        return true, "Quest Item Tracker Forever is ready",
+            "QuestieDB: Installed and enabled. It provides the quest information QITF needs."
+    end
+
+    local exists = SafeCall(C_AddOns and C_AddOns.DoesAddOnExist, "QuestieDB")
+    -- Older client versions may lack DoesAddOnExist; the reason from
+    -- GetAddOnInfo distinguishes a missing folder from a disabled addon.
+    local reason
+    local getInfo = (C_AddOns and C_AddOns.GetAddOnInfo) or GetAddOnInfo
+    if type(getInfo) == "function" then
+        local ok, _, _, _, _, infoReason = pcall(getInfo, "QuestieDB")
+        if ok then reason = infoReason end
+    end
+
+    if exists == false or reason == "MISSING" then
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Not installed. QITF needs QuestieDB to find quest items. "
+                .. "CurseForge normally installs it for you. If you installed QITF "
+                .. "from GitHub, install QuestieDB too, then restart or reload WoW."
+    end
+
+    local state = SafeCall(C_AddOns and C_AddOns.GetAddOnEnableState, "QuestieDB")
+    if state == nil then state = SafeCall(GetAddOnEnableState, "QuestieDB") end
+    if reason == "DISABLED" or state == 0 or state == false then
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Installed but disabled in WoW. "
+                .. "Enable QuestieDB in the AddOns list, then reload or restart the game."
+    end
+
+    local loaded = SafeCall(C_AddOns and C_AddOns.IsAddOnLoaded, "QuestieDB")
+    if loaded == nil then loaded = SafeCall(IsAddOnLoaded, "QuestieDB") end
+    if loaded == false then
+        return false, "Quest Item Tracker Forever needs attention",
+            "QuestieDB: Installed but not loaded. "
+                .. "Check that it is enabled in the AddOns list and restart or reload WoW."
+    end
+
+    return false, "Quest Item Tracker Forever needs attention",
+        "QuestieDB: Not ready. It's not providing the quest information QITF needs. "
+            .. "Make sure you have a compatible version installed and enabled, "
+            .. "then reload WoW. " .. tostring(detail or "")
+end
+
+local function UpdateQuestieDBStatusLight()
+    if not questieDBStatusLight then return end
+    local dot = questieDBStatusLight.dot
+    if not dot or type(dot.SetVertexColor) ~= "function" then return end
+    local ready = QuestieDBStatus()
+    -- This is a real circular texture with a transparent background. Font
+    -- symbols like "●" can become empty squares in Forever's UI font.
+    dot:SetVertexColor(
+        ready and 0.24 or 1,
+        ready and 0.92 or 0.28,
+        ready and 0.45 or 0.28,
+        1
+    )
+end
+
 local function CreateOptionsPanel()
     if optionsPanel then return optionsPanel end
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 383)
-    panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
+    panel:SetSize(360, 454)
+    RestoreOptionsPanelPosition(panel)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
     panel:SetMovable(true)
     panel:SetClampedToScreen(true)
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", function(self) self:StartMoving() end)
-    panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    panel:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveOptionsPanelPosition(self)
+    end)
 
+    -- Restrained Warcraft-style frame: warm charcoal, aged-gold trim,
+    -- and a quiet title band. Keep native WoW controls (checkboxes, reset,
+    -- close) so other UI packs can still restyle their normal templates.
     local border = panel:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
-    SetSolidColor(border, 0.34, 0.43, 0.55, 0.96)
+    SetSolidColor(border, 0.42, 0.33, 0.20, 0.98)
     local background = panel:CreateTexture(nil, "BORDER")
     background:SetPoint("TOPLEFT", panel, "TOPLEFT", 2, -2)
     background:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -2, 2)
-    SetSolidColor(background, 0.055, 0.075, 0.11, 0.98)
+    SetSolidColor(background, 0.055, 0.052, 0.047, 0.98)
+
+    local headerBand = panel:CreateTexture(nil, "ARTWORK")
+    headerBand:SetPoint("TOPLEFT", panel, "TOPLEFT", 3, -3)
+    headerBand:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -3)
+    headerBand:SetHeight(43)
+    SetSolidColor(headerBand, 0.125, 0.101, 0.072, 0.96)
+
     local stripe = panel:CreateTexture(nil, "ARTWORK")
     stripe:SetHeight(2)
     stripe:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -45)
     stripe:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, -45)
-    SetSolidColor(stripe, 0.38, 0.7, 0.94, 1)
+    SetSolidColor(stripe, 0.66, 0.48, 0.25, 0.94)
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -16)
     title:SetText("Quest Item Tracker Forever")
+    if type(title.SetTextColor) == "function" then
+        title:SetTextColor(1, 0.82, 0.41, 1)
+    end
     local version = AddonVersion()
     if version then
         local versionLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -2)
         versionLabel:SetText("v" .. version)
-        versionLabel:SetTextColor(0.55, 0.63, 0.72, 1)
+        if type(versionLabel.SetTextColor) == "function" then
+            versionLabel:SetTextColor(0.62, 0.58, 0.49, 1)
+        end
     end
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
+    if type(subTitle.SetTextColor) == "function" then
+        subTitle:SetTextColor(0.79, 0.75, 0.67, 1)
+    end
+
+    -- Only a small green/red dot, not another label or block in the menu.
+    -- Hovering it explains whether QuestieDB is working and what to fix.
+    local statusLight = CreateFrame("Button", "QITQuestieDBStatus", panel)
+    statusLight:SetSize(20, 20)
+    statusLight:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -19, -52)
+    statusLight:EnableMouse(true)
+    local dot = statusLight:CreateTexture(nil, "ARTWORK")
+    dot:SetSize(18, 18)
+    dot:SetPoint("CENTER", statusLight, "CENTER", 0, 0)
+    dot:SetTexture(QIT_STATUS_TEXTURE)
+    statusLight.dot = dot
+    questieDBStatusLight = statusLight
+    statusLight:SetScript("OnEnter", function(self)
+        if not GameTooltip or type(GameTooltip.SetOwner) ~= "function"
+            or type(GameTooltip.SetText) ~= "function"
+            or type(GameTooltip.AddLine) ~= "function" then return end
+        local ready, title, explanation = QuestieDBStatus()
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title, ready and 0.28 or 1, ready and 0.9 or 0.3, ready and 0.4 or 0.3)
+        GameTooltip:AddLine(explanation, 0.95, 0.95, 0.95, true)
+        GameTooltip:Show()
+    end)
+    statusLight:SetScript("OnLeave", function(self)
+        if GameTooltip and type(GameTooltip.GetOwner) == "function"
+            and GameTooltip:GetOwner() == self then
+            GameTooltip:Hide()
+        end
+    end)
+    UpdateQuestieDBStatusLight()
 
     local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
     close:SetScript("OnClick", function() panel:Hide() end)
 
+    -- Keep the menu labels short. Hover over any option to understand its
+    -- effect in everyday language; the item tooltip itself stays uncluttered.
     local entries = {
-        { key = "filterByFaction", label = "Only show my faction quests" },
-        { key = "showQuestIDs", label = "Show quest IDs" },
-        { key = "showItemIDs", label = "Show item IDs" },
-        { key = "showQuestLevels", label = "Show quest levels" },
-        { key = "showInventoryBreakdown", label = "Show bag / bank breakdown" },
-        { key = "showFutureStatusLabels", label = "Show future quest labels" },
+        {
+            key = "filterByFaction", label = "Only show my faction quests", y = -87,
+            help = "Show quests meant for your faction, along with neutral quests. "
+                .. "Quests marked for the opposite faction are hidden. "
+                .. "Quests you're already working on still appear.",
+        },
+        {
+            key = "suppressExternalIDs", label = "Hide IDs from other addons", y = -154,
+            help = "Hide extra number-only details, such as ItemID and IconID, "
+                .. "that other addons put on item tooltips. "
+                .. "This is off by default and does not change the other addons' settings "
+                .. "or hide IDs shown by QITF.",
+        },
+        {
+            key = "showQuestIDs", label = "Show QITF quest IDs", y = -190,
+            help = "Show the identifying number for each quest listed by QITF. "
+                .. "For example, you can use a quest ID to identify a particular quest "
+                .. "when asking for help. This does not control IDs from other addons.",
+        },
+        {
+            key = "showItemIDs", label = "Show QITF item IDs", y = -226,
+            help = "Show the item's identifying number inside QITF's section of "
+                .. "the tooltip. This can help when reporting an item problem. "
+                .. "Other addons' ItemID lines are controlled by the option above.",
+        },
+        {
+            key = "showQuestLevels", label = "Show quest levels", y = -285,
+            help = "Show each quest's level next to its name, such as Level 60. "
+                .. "Turn this off for shorter quest names without changing which quests appear.",
+        },
+        {
+            key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321,
+            help = "Show how many copies of an item are in your bags and bank, "
+                .. "next to the total you have. Turn this off to see just the total; "
+                .. "QITF still counts your items.",
+        },
+        {
+            key = "showFutureStatusLabels", label = "Show future quest labels", y = -357,
+            help = "Add extra explanations for quests you could do later, "
+                .. "such as FUTURE QUEST, plus a summary when an item has only future uses. "
+                .. "Leaving this off keeps the tooltip shorter without removing "
+                .. "important KEEP or NEEDED advice.",
+        },
     }
+    local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
+    idsHeading:SetText("ID DISPLAY")
+    if type(idsHeading.SetTextColor) == "function" then idsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
+    local detailsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    detailsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -263)
+    detailsHeading:SetText("OTHER DETAILS")
+    if type(detailsHeading.SetTextColor) == "function" then detailsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
     local checkboxes = {}
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         checkbox:SetSize(25, 25)
-        checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, -86 - (i - 1) * 36)
+        checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, entry.y)
         checkbox:SetChecked(SettingEnabled(entry.key))
+        -- Expand the checkbox's mouse area across its text, so hovering
+        -- anywhere on the option shows its help and clicking text works too.
+        if type(checkbox.SetHitRectInsets) == "function" then
+            checkbox:SetHitRectInsets(0, -255, 0, 0)
+        end
+        checkbox:SetScript("OnEnter", function(self)
+            if not GameTooltip or type(GameTooltip.SetOwner) ~= "function"
+                or type(GameTooltip.SetText) ~= "function"
+                or type(GameTooltip.AddLine) ~= "function" then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(entry.label, 0.92, 0.77, 0.49)
+            GameTooltip:AddLine(entry.help, 0.95, 0.95, 0.95, true)
+            GameTooltip:Show()
+        end)
+        checkbox:SetScript("OnLeave", function(self)
+            if GameTooltip and type(GameTooltip.GetOwner) == "function"
+                and GameTooltip:GetOwner() == self then
+                GameTooltip:Hide()
+            end
+        end)
         local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
         label:SetText(entry.label)
@@ -934,6 +1227,8 @@ local function CreateOptionsPanel()
     reset:SetText("Reset defaults")
     reset:SetScript("OnClick", function()
         for key, value in pairs(DEFAULT_SETTINGS) do DB.settings[key] = value end
+        DB.settings.optionsPanelPosition = nil
+        RestoreOptionsPanelPosition(panel)
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
@@ -942,7 +1237,11 @@ local function CreateOptionsPanel()
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -17, 23)
     hint:SetText("Changes apply on next hover")
+    if type(hint.SetTextColor) == "function" then
+        hint:SetTextColor(0.63, 0.60, 0.54, 1)
+    end
     panel:SetScript("OnShow", function()
+        UpdateQuestieDBStatusLight()
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
@@ -961,12 +1260,85 @@ local function ToggleOptionsPanel()
     if panel:IsShown() then panel:Hide() else panel:Show() end
 end
 
-local function PlaceMinimapButton()
-    if not minimapButton or not Minimap then return end
+-- Position the minimap button around the actual rim, keeping saved drag
+-- directions compatible with earlier builds. The radius adjusts to size.
+local MINIMAP_EDGE_PADDING = 5
+local MINIMAP_SAVE_RADIUS = 80
+
+local function MinimapDirection()
+    -- Restore the committed drop position after /reload. Keep historical
+    -- X/Y fields as a fallback for players upgrading from older versions.
+    local saved = DB.settings.minimapPosition
+    if type(saved) == "table" then
+        local sx, sy = tonumber(saved.x), tonumber(saved.y)
+        if sx and sy and sx == sx and sy == sy then
+            local length = math.sqrt(sx * sx + sy * sy)
+            if length > 0.001 and length < 10000 then
+                return sx / length, sy / length
+            end
+        end
+    end
     local x = tonumber(DB.settings.minimapX) or 75
     local y = tonumber(DB.settings.minimapY) or -28
+    local length = math.sqrt(x * x + y * y)
+    if length < 0.001 then return 1, 0 end
+    return x / length, y / length
+end
+
+local function PlaceMinimapButton()
+    if not minimapButton or not Minimap then return end
+    local nx, ny = MinimapDirection()
+    local width = tonumber(SafeCall(Minimap.GetWidth, Minimap)) or 140
+    local height = tonumber(SafeCall(Minimap.GetHeight, Minimap)) or width
+    if width <= 0 then width = 140 end
+    if height <= 0 then height = width end
+
+    -- Square minimap skins use the perimeter rather than a round orbit.
+    local shape = SafeCall(GetMinimapShape)
+    if shape == "SQUARE" then
+        local edge = math.max(math.abs(nx), math.abs(ny))
+        if edge > 0 then nx, ny = nx / edge, ny / edge end
+    end
+
+    local x = nx * (width / 2 + MINIMAP_EDGE_PADDING)
+    local y = ny * (height / 2 + MINIMAP_EDGE_PADDING)
     minimapButton:ClearAllPoints()
     minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function SaveMinimapCursorDirection()
+    if not Minimap or type(GetCursorPosition) ~= "function" then return false end
+    local mouseX, mouseY = SafeCall(GetCursorPosition)
+    local centerX, centerY = SafeCall(Minimap.GetCenter, Minimap)
+    local scale = tonumber(SafeCall(Minimap.GetEffectiveScale, Minimap)) or 1
+    if type(mouseX) ~= "number" or type(mouseY) ~= "number"
+        or type(centerX) ~= "number" or type(centerY) ~= "number"
+        or scale <= 0 then return false end
+    local dx, dy = mouseX / scale - centerX, mouseY / scale - centerY
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if distance < 0.001 then return false end
+    -- Persist *while* dragging, not only on drag-stop. Some UI clients
+    -- can miss a final release callback even though the icon moves normally;
+    -- a reload must still restore the last position reached on the rim.
+    local nx, ny = dx / distance, dy / distance
+    DB.settings.minimapX = nx * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapY = ny * MINIMAP_SAVE_RADIUS
+    DB.settings.minimapPosition = { x = nx, y = ny }
+    PlaceMinimapButton()
+    return true
+end
+
+local function FinishMinimapDrag(button)
+    if not button.qitDragging then return end
+    button.qitDragging = false
+    button:SetScript("OnUpdate", nil)
+    -- The last cursor event may have occurred between update frames.
+    SaveMinimapCursorDirection()
+    -- One final save in case the cursor moved after the last frame update.
+    -- The same durable direction is also written during every drag update.
+    local nx, ny = MinimapDirection()
+    DB.settings.minimapPosition = { x = nx, y = ny }
+    PlaceMinimapButton()
 end
 
 local function CreateMinimapButton()
@@ -978,21 +1350,19 @@ local function CreateMinimapButton()
     button:RegisterForDrag("LeftButton")
     button:SetMovable(true)
 
+    -- The approved gold QIT / FOREVER minimap badge has its own border.
+    -- Keep the existing rim alignment and drag behavior, but do not overlay
+    -- a second tracking border that obscures the badge's lettering.
     local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(21, 21)
+    icon:SetSize(30, 30)
     icon:SetPoint("CENTER", button, "CENTER", 0, 0)
-    icon:SetTexture(QIT_ICON_TEXTURE)
-    if type(icon.SetTexCoord) == "function" then icon:SetTexCoord(0, 1, 0, 1) end
-    local border = button:CreateTexture(nil, "OVERLAY")
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetSize(54, 54)
-    border:SetPoint("CENTER", button, "CENTER", 10, -10)
+    icon:SetTexture(QIT_BADGE_TEXTURE)
 
     button:SetScript("OnClick", ToggleOptionsPanel)
     button:SetScript("OnEnter", function(self)
         if not GameTooltip or type(GameTooltip.SetOwner) ~= "function" then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Quest Item Tracker Forever", 0.4, 0.8, 1)
+        GameTooltip:AddLine("Quest Item Tracker Forever", 0.96, 0.79, 0.40)
         GameTooltip:AddLine("Click: tooltip settings", 1, 1, 1)
         GameTooltip:AddLine("Drag: move minimap button", 0.7, 0.7, 0.7)
         GameTooltip:Show()
@@ -1000,24 +1370,24 @@ local function CreateMinimapButton()
     button:SetScript("OnLeave", function()
         if GameTooltip and type(GameTooltip.Hide) == "function" then GameTooltip:Hide() end
     end)
-    button:SetScript("OnDragStart", function(self) self:StartMoving() end)
-    button:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local x, y = self:GetCenter()
-        local centerX, centerY = Minimap:GetCenter()
-        if x and y and centerX and centerY then
-            local dx, dy = x - centerX, y - centerY
-            local distance = math.sqrt(dx * dx + dy * dy)
-            if distance > 0 then
-                -- Snap to the minimap rim, and remember placement on relog.
-                DB.settings.minimapX = math.floor(dx / distance * 80 + 0.5)
-                DB.settings.minimapY = math.floor(dy / distance * 80 + 0.5)
-            end
-        end
-        PlaceMinimapButton()
+    button:SetScript("OnDragStart", function(self)
+        -- Orbit around the minimap as the cursor moves, rather than briefly
+        -- dragging the button through the middle and snapping it back.
+        self.qitDragging = true
+        self:SetScript("OnUpdate", SaveMinimapCursorDirection)
+    end)
+    button:SetScript("OnDragStop", FinishMinimapDrag)
+    -- Some client/UI combinations send OnMouseUp but not OnDragStop.
+    -- A plain click is unaffected because qitDragging is only set by drag.
+    button:SetScript("OnMouseUp", function(self, mouseButton)
+        if mouseButton == "LeftButton" then FinishMinimapDrag(self) end
     end)
     minimapButton = button
     PlaceMinimapButton()
+    -- Minimap replacement/scale addons sometimes resize their map after login.
+    if type(Minimap.HookScript) == "function" then
+        Minimap:HookScript("OnSizeChanged", PlaceMinimapButton)
+    end
 end
 
 local function AddTooltipLines(tooltip, data, explicitItemID)
@@ -1280,6 +1650,9 @@ end
 
 local function RunTooltipHook(tooltip, data, explicitItemID)
     local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
+    -- Most bag addons place ID rows before the QIT section. Handle them even
+    -- when the item has no quest associations and QIT adds no lines.
+    SuppressExternalTooltipIDs(tooltip)
     if not ok and not tooltipErrorReported then
         tooltipErrorReported = true
         Print("Tooltip error (first occurrence): " .. tostring(err))
@@ -1299,14 +1672,30 @@ local function HookTooltipFrame(tooltip)
 
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
             decoratedTooltips[self] = nil
+            RestoreExternalIDHeights(self)
         end)
         pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
             decoratedTooltips[self] = nil
+            RestoreExternalIDHeights(self)
         end)
         ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
             RunTooltipHook(self)
         end)
         if ok then hooked = true end
+        -- Some inventory UIs append IDs after their regular tooltip callbacks.
+        -- Check at most every 0.15 seconds, not every rendered frame.
+        local rescanElapsed = 0
+        pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
+            if not SettingEnabled("suppressExternalIDs") then
+                rescanElapsed = 0
+                return
+            end
+            rescanElapsed = rescanElapsed + (tonumber(elapsed) or 0)
+            if rescanElapsed >= 0.15 then
+                rescanElapsed = 0
+                SuppressExternalTooltipIDs(self)
+            end
+        end)
     end
 
     -- Certain inventory addons use setter methods without publishing a typed
@@ -1318,6 +1707,7 @@ local function HookTooltipFrame(tooltip)
         if type(tooltip.ClearLines) == "function" then
             pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
                 decoratedTooltips[self] = nil
+                RestoreExternalIDHeights(self)
             end)
         end
         if type(tooltip.SetBagItem) == "function" then
@@ -1586,7 +1976,12 @@ frame:SetScript("OnEvent", function(_, event, ...)
         -- all completed quest IDs are synchronized automatically at login.
     elseif event == "ADDON_LOADED" then
         local addonName = ...
-        if addonName == "QuestieDB" then
+        if addonName == "QuestItemTracker" then
+            -- The definitive SavedVariables table exists at this point,
+            -- including on clients without LoadSavedVariablesFirst support.
+            AttachSavedVariables()
+        elseif addonName == "QuestieDB" then
+            UpdateQuestieDBStatusLight()
             InstallTooltipHook()
             if CHARACTER_DATA then SyncQuestHistory(true) end
             BuildQuestItemIndex()

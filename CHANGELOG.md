@@ -2,7 +2,17 @@
 
 All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in this single file**, newest release first.
 
-**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes a GitHub release after passing CI. CurseForge publishing remains a separate explicit action.
+**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
+
+## [0.5] - 2026-11-12
+
+- **Cleaner item tooltips:** Optionally hide extra ItemID and IconID lines added by other addons. This is off by default; QITF's own quest and item IDs remain separate options.
+- **Settings that explain themselves:** Hover over any setting for a plain-English description of what it changes.
+- **A more polished look:** The settings window now uses a warm charcoal-and-gold theme, with standard WoW checkboxes and buttons for UI skin compatibility.
+- **QuestieDB status at a glance:** A small green or red indicator in settings shows whether QuestieDB is ready. Hover over it to see what's working or what needs to be fixed.
+- **Better positioning:** The settings window remembers where you moved it, including after a reload. Reset defaults returns it to the center.
+- **Improved minimap button:** The QITF badge sits neatly on the minimap edge, follows the rim while dragging, and adapts to different minimap sizes and layouts. Fixed its position resetting after `/reload` or restarting the game.
+- **Forever branding:** The AddOns-list quest-book icon includes a subtle FOREVER stamp, while the minimap has its own gold QIT / FOREVER badge and matching gold tooltip heading.
 
 ## [0.4] - 2026-11-12
 
