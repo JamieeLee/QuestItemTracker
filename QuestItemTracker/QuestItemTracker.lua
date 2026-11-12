@@ -2,16 +2,23 @@
 -- Automatic per-character quest sync + tooltip compatibility and index warm-up.
 -- Requires the standalone QuestieDB data addon; the full Questie tracker/map addon is not required.
 
-QuestItemTrackerDB = QuestItemTrackerDB or {}
-
-local DB = QuestItemTrackerDB
-DB.version = 4
-DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login for this character.
-DB.events = DB.events or {}
-DB.items = DB.items or {}
-DB.characters = DB.characters or {}
--- Tooltip preferences are shared across the account; quest history stays character-scoped.
-DB.settings = type(DB.settings) == "table" and DB.settings or {}
+-- Always bind to the actual SavedVariables table. On clients that load
+-- SavedVariables AFTER addon Lua runs, the table initially created here is
+-- temporary and WoW replaces the global before ADDON_LOADED. If closures
+-- capture that temporary table, settings appear to work but vanish on /reload.
+local DB
+local function AttachSavedVariables()
+    if type(QuestItemTrackerDB) ~= "table" then QuestItemTrackerDB = {} end
+    DB = QuestItemTrackerDB
+    DB.version = 4
+    DB.quests = DB.quests or {} -- v0.3.x legacy bucket, migrated on first login.
+    DB.events = DB.events or {}
+    DB.items = DB.items or {}
+    DB.characters = DB.characters or {}
+    -- Preferences are account-wide; quest history stays character-scoped.
+    DB.settings = type(DB.settings) == "table" and DB.settings or {}
+end
+AttachSavedVariables()
 local CHARACTER_DATA
 local completedQuestSnapshot -- fallback when IsQuestFlaggedCompleted is unavailable
 
@@ -1969,7 +1976,11 @@ frame:SetScript("OnEvent", function(_, event, ...)
         -- all completed quest IDs are synchronized automatically at login.
     elseif event == "ADDON_LOADED" then
         local addonName = ...
-        if addonName == "QuestieDB" then
+        if addonName == "QuestItemTracker" then
+            -- The definitive SavedVariables table exists at this point,
+            -- including on clients without LoadSavedVariablesFirst support.
+            AttachSavedVariables()
+        elseif addonName == "QuestieDB" then
             UpdateQuestieDBStatusLight()
             InstallTooltipHook()
             if CHARACTER_DATA then SyncQuestHistory(true) end
