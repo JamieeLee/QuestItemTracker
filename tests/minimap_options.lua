@@ -1,6 +1,26 @@
 -- Standalone simulated WoW Forever client for the QIT minimap settings UI.
 _G.QuestItemTrackerDB = nil
-_G.C_AddOns = {GetAddOnMetadata=function(addon,key)
+local questieInstalled, questieEnabled, questieLoaded = true, true, true
+_G.C_AddOns = {
+  DoesAddOnExist=function(name)
+    assert(name=='QuestieDB')
+    return questieInstalled
+  end,
+  GetAddOnEnableState=function(name)
+    assert(name=='QuestieDB')
+    return questieEnabled and 2 or 0
+  end,
+  IsAddOnLoaded=function(name)
+    assert(name=='QuestieDB')
+    return questieLoaded
+  end,
+  GetAddOnInfo=function(name)
+    assert(name=='QuestieDB')
+    local reason=not questieInstalled and 'MISSING'
+      or (not questieEnabled and 'DISABLED' or nil)
+    return name,'QuestieDB','',questieEnabled,reason,'INSECURE'
+  end,
+  GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
   if key=='Version' then return '0.5' end
 end}
@@ -151,6 +171,73 @@ button.scripts.OnClick(button,'LeftButton')
 local panel
 for _, f in ipairs(frames) do if f.name=='QITOptionsPanel' then panel=f end end
 assert(panel and panel:IsShown(),'minimap button did not open settings')
+
+-- A small dot with a plain-English reason when QuestieDB is missing or disabled.
+local statusLight
+for _,f in ipairs(frames) do
+  if f.name=='QITQuestieDBStatus' then statusLight=f end
+end
+assert(statusLight and statusLight.parent==panel and statusLight.label,
+  'dependency light missing or placed outside settings panel')
+assert(statusLight.w==20 and statusLight.h==20,
+  'dependency light must stay small and unobtrusive')
+assert(statusLight.label.textColor and statusLight.label.textColor[2]>0.8,
+  'working QuestieDB must show a green status light')
+
+local function testStatusHover(title,needle)
+  GameTooltip:ClearLines()
+  GameTooltip.shown=false
+  statusLight.scripts.OnEnter(statusLight)
+  assert(GameTooltip.shown and GameTooltip:GetOwner()==statusLight,
+    'dependency light must show its help on hover')
+  assert(GameTooltip.title==title,
+    'dependency hover has wrong title: '..tostring(GameTooltip.title))
+  assert(table.concat(GameTooltip.lines,' '):find(needle,1,true),
+    'dependency help did not explain what to do')
+  statusLight.scripts.OnLeave(statusLight)
+  assert(not GameTooltip.shown,'dependency help must close on mouse leave')
+end
+testStatusHover('QuestieDB is ready','providing the quest information')
+
+local previousLib,previousQuestDB=LibQuestieDB,QuestDB
+
+-- The user disabled QuestieDB in WoW, so QIT loads without a database.
+questieEnabled,questieLoaded=false,false
+LibQuestieDB=nil
+panel:Hide();panel:Show()
+assert(statusLight.label.textColor[1]>0.9 and statusLight.label.textColor[2]<0.5,
+  'disabled QuestieDB must show a red status light')
+testStatusHover('QuestieDB is disabled','Enable QuestieDB in the AddOns list')
+
+-- The raw GitHub ZIP was installed without reading QuestieDB requirements.
+questieInstalled=false
+panel:Hide();panel:Show()
+assert(statusLight.label.textColor[1]>0.9,'missing QuestieDB must stay red')
+testStatusHover('QuestieDB is not installed','CurseForge normally installs it')
+
+-- QuestieDB is installed but not loaded.
+questieInstalled,questieEnabled=true,true
+panel:Hide();panel:Show()
+testStatusHover('QuestieDB did not load','not loaded it')
+
+-- A mismatched QuestieDB contract has a different, actionable explanation.
+questieLoaded=true
+LibQuestieDB={RequireContract=function() return false, 'mismatched database' end}
+panel:Hide();panel:Show()
+testStatusHover('QuestieDB needs attention','compatible version')
+
+-- Once QuestieDB loads correctly, QIT returns to green without a reload.
+LibQuestieDB,QuestDB=previousLib,previousQuestDB
+main.scripts.OnEvent(main,'ADDON_LOADED','QuestieDB')
+assert(statusLight.label.textColor[2]>0.8,'light did not turn green when QuestieDB loaded')
+testStatusHover('QuestieDB is ready','providing the quest information')
+
+local toc=assert(io.open('QuestItemTracker/QuestItemTracker.toc','r'))
+local tocText=toc:read('*a'); toc:close()
+assert(tocText:find('## OptionalDeps: QuestieDB',1,true) and
+  not tocText:find('## Dependencies: QuestieDB',1,true),
+  'QIT must be able to load without QuestieDB to show the red warning')
+
 local initialPoint=panel.points[#panel.points]
 assert(initialPoint and initialPoint[1]=='CENTER' and initialPoint[2]==UIParent and
     initialPoint[3]=='CENTER' and initialPoint[4]==0 and initialPoint[5]==45,
