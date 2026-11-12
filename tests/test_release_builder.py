@@ -62,6 +62,17 @@ class ReleaseBuilderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             rb.current_changes(self.root, "0.3")
 
+    def test_public_release_notes_reject_development_only_addon_names(self):
+        # Player-facing changelogs describe QITF changes without exposing
+        # the implementation research behind a minimap alignment fix.
+        for name in ("BigWigs", "LibDBIcon"):
+            (self.root / "CHANGELOG.md").write_text(
+                f"# Changelog\\n\\n## [0.2] - 2026-11-11\\n\\n"
+                f"- Fixed ring alignment by copying {name} positioning.\\n"
+            )
+            with self.assertRaisesRegex(ValueError, "development-only reference"):
+                rb.current_changes(self.root, "0.2")
+
     def test_nested_zip_rejected(self):
         (self.root / "QuestItemTracker" / "other.zip").write_bytes(b"x")
         with self.assertRaisesRegex(ValueError, "Nested archive"):
