@@ -6,18 +6,20 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 ## [0.5] - 2026-11-12
 
-### Tooltip preferences
-- Add a new **Hide IDs from other addons** option, **off by default**; only when enabled, suppress isolated technical ID rows like ItemID and IconID from other addons' shared item tooltips.
-- Organize the ID display options together: external-addon suppression first, followed by independent **Show QIT quest IDs** and **Show QIT item IDs** toggles. Existing QIT ID preferences remain off by default.
-- Leave normal item details, descriptions, and all quest matching/KEEP decisions unchanged. Do not modify other addons' SavedVariables or settings.
-- Refresh the settings panel with compact ID and details sections; preserve one source-of-truth changelog and the automatic release pipeline.
-- Add friendly hover explanations to all seven settings, including examples of when to use them and what they do not change. The clickable hover area covers each setting's label, keeping the panel itself tidy.
-- Remember the dragged settings-panel position in QIT's account-wide SavedVariables and restore it after `/reload` or restarting WoW. Fresh installs keep the original centered position, and **Reset defaults** recenters the panel.
-- Add a tiny **circular green/red QuestieDB status light** to the settings menu (a real transparent texture, not a font square). Its hover starts with **Quest Item Tracker Forever is ready** or **needs attention**, then explains whether QuestieDB is installed, disabled, unloaded, or incompatible.
-- Let QIT's settings panel load without QuestieDB via WoW's `OptionalDeps` so people who install the GitHub ZIP without QuestieDB can see the warning. QuestieDB **remains required** in CurseForge metadata so the CurseForge app installs it automatically; no quest-matching or retention logic is changed.
-- Restyle the default settings panel with muted aged-gold trim, a warm charcoal background, and a subtle title band, while preserving standard WoW checkboxes, reset, and close controls for UI skin compatibility.
-- Give the existing quest-book icon a small aged-gold **FOREVER** stamp, preserving its recognizable look at addon-list and minimap sizes.
-- Align the draggable minimap icon with the same outer-rim positioning and classic button art layout used by BigWigs/LibDBIcon: orbit while dragging, adapt to minimap resizing, preserve saved position direction, and keep support for square minimap skins. No extra addon dependency.
+### Cleaner item tooltips
+- Add **Hide IDs from other addons**, off by default, to hide extra technical ID rows on shared item tooltips without changing other addons' settings.
+- Keep QITF's own quest and item ID options independent and grouped under **ID DISPLAY**.
+
+### Easier-to-use settings
+- Explain all seven settings in plain English when hovered, without adding clutter to the window.
+- Remember where you move the settings window after closing, reloading, or restarting the game. **Reset defaults** returns it to the center.
+- Add a small green/red QuestieDB status light with helpful hover messages if QuestieDB is missing, disabled, or not working correctly.
+- Allow QITF's settings window to open even if QuestieDB is missing from a manual installation. CurseForge still lists QuestieDB as a required dependency.
+- Refresh the default settings appearance with warm charcoal and muted gold while retaining native WoW controls.
+
+### Minimap and branding
+- Improve minimap button alignment, dragging around the map's edge, and placement across different minimap sizes and layouts.
+- Give the AddOns-list quest-book icon a subtle **FOREVER** stamp, and refine the minimap tooltip's colors to match the new interface.
 
 ## [0.4] - 2026-11-12
 
