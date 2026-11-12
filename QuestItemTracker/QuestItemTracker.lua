@@ -1123,7 +1123,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     -- headings avoid repeating the same REPEATABLE / GREY label per quest.
     -- Retention and per-quest status calculations above remain authoritative.
     local activeCount, futureCount, completedCount = 0, 0, 0
-    local ordinaryQuests, repeatableQuests, lowLevelQuests = {}, {}, {}
+    local ordinaryQuests, repeatableQuests, lowLevelQuests, factionTurnIns = {}, {}, {}, {}
     for _, questID in ipairs(ids) do
         local entry = matches[questID]
         local active = activeMap[questID]
@@ -1155,6 +1155,10 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             repeatableQuests[#repeatableQuests + 1] = row
         elseif status == "FUTURE USE · GREY QUEST" then
             lowLevelQuests[#lowLevelQuests + 1] = row
+        elseif not IsInformationalOnly(entry) and
+            string.find(row.name, "^A Donation of ") then
+            -- City cloth quartermasters share donation titles across faction quests.
+            factionTurnIns[#factionTurnIns + 1] = row
         else
             ordinaryQuests[#ordinaryQuests + 1] = row
         end
@@ -1250,6 +1254,10 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
 
     for _, row in ipairs(CompactQuestRows(ordinaryQuests)) do ShowQuestRow(row, nil) end
+    if #factionTurnIns > 0 then
+        tooltip:AddLine("FACTION TURN-INS", 0.4, 0.78, 1)
+        for _, row in ipairs(CompactQuestRows(factionTurnIns)) do ShowQuestRow(row, "faction") end
+    end
     if #repeatableQuests > 0 then
         tooltip:AddLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
         for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
