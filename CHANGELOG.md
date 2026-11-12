@@ -12,6 +12,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Use the same compact icon in the draggable minimap settings button without adding version text or clutter to the minimap tooltip.
 - Keep the internal addon folder, SavedVariables, slash commands, and dependency setup unchanged.
 - Group repeatable and low-level (grey) quest associations under one clean heading per category instead of repeating the same status beneath each quest; retain meaningful active/completion statuses, quest IDs, and item counts.
+- Place city cloth donations under a concise **FACTION TURN-INS** heading and collapse matching quest-title/level/status rows into one counted line (e.g., **5 quests**), keeping every quest ID available when IDs are enabled. Different statuses or requirements remain separate.
 
 ## [0.3] - 2026-11-11
 
