@@ -914,6 +914,7 @@ end
 
 local optionsPanel
 local minimapButton
+local questieDBStatusLight
 local QIT_ICON_TEXTURE = "Interface\\AddOns\\QuestItemTracker\\Media\\QITIcon"
 
 local function SetSolidColor(texture, r, g, b, a)
@@ -957,6 +958,67 @@ local function SaveOptionsPanelPosition(panel)
     if x == x and y == y and math.abs(x) <= 10000 and math.abs(y) <= 10000 then
         DB.settings.optionsPanelPosition = { x = x, y = y }
     end
+end
+
+-- CurseForge declares QuestieDB as REQUIRED for automatic installation.
+-- The WoW TOC uses OptionalDeps instead, because a hard dependency would stop
+-- QIT itself from loading when a manual ZIP user forgets QuestieDB; that would
+-- make the missing-dependency warning impossible to show.
+local function QuestieDBStatus()
+    local ready, detail = QuestieDBReady()
+    if ready then
+        return true, "QuestieDB is ready",
+            "QuestieDB is installed, enabled, and providing the quest information QIT needs."
+    end
+
+    local exists = SafeCall(C_AddOns and C_AddOns.DoesAddOnExist, "QuestieDB")
+    -- Older client versions may lack DoesAddOnExist; the reason from
+    -- GetAddOnInfo distinguishes a missing folder from a disabled addon.
+    local reason
+    local getInfo = (C_AddOns and C_AddOns.GetAddOnInfo) or GetAddOnInfo
+    if type(getInfo) == "function" then
+        local ok, _, _, _, _, infoReason = pcall(getInfo, "QuestieDB")
+        if ok then reason = infoReason end
+    end
+
+    if exists == false or reason == "MISSING" then
+        return false, "QuestieDB is not installed",
+            "QIT needs the separate QuestieDB addon to find quest items. "
+                .. "CurseForge normally installs it for you. If you installed QIT "
+                .. "from GitHub, install QuestieDB too, then restart or reload WoW."
+    end
+
+    local state = SafeCall(C_AddOns and C_AddOns.GetAddOnEnableState, "QuestieDB")
+    if state == nil then state = SafeCall(GetAddOnEnableState, "QuestieDB") end
+    if reason == "DISABLED" or state == 0 or state == false then
+        return false, "QuestieDB is disabled",
+            "QuestieDB is on your computer but is turned off in WoW. "
+                .. "Enable QuestieDB in the AddOns list, then reload or restart the game."
+    end
+
+    local loaded = SafeCall(C_AddOns and C_AddOns.IsAddOnLoaded, "QuestieDB")
+    if loaded == nil then loaded = SafeCall(IsAddOnLoaded, "QuestieDB") end
+    if loaded == false then
+        return false, "QuestieDB did not load",
+            "QuestieDB appears to be installed, but WoW has not loaded it. "
+                .. "Check that it is enabled in the AddOns list and restart or reload WoW."
+    end
+
+    return false, "QuestieDB needs attention",
+        "QuestieDB is not providing the quest information QIT needs. "
+            .. "Make sure you have a compatible version installed and enabled, "
+            .. "then reload WoW. " .. tostring(detail or "")
+end
+
+local function UpdateQuestieDBStatusLight()
+    if not questieDBStatusLight then return end
+    local ready = QuestieDBStatus()
+    questieDBStatusLight.label:SetTextColor(
+        ready and 0.28 or 0.98,
+        ready and 0.90 or 0.26,
+        ready and 0.40 or 0.24,
+        1
+    )
 end
 
 local function CreateOptionsPanel()
@@ -1003,6 +1065,35 @@ local function CreateOptionsPanel()
     local subTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     subTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -58)
     subTitle:SetText("Tooltip preferences  |  Saved automatically")
+
+    -- Only a small green/red dot, not another label or block in the menu.
+    -- Hovering it explains whether QuestieDB is working and what to fix.
+    local statusLight = CreateFrame("Button", "QITQuestieDBStatus", panel)
+    statusLight:SetSize(20, 20)
+    statusLight:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -19, -52)
+    statusLight:EnableMouse(true)
+    local lightGlyph = statusLight:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    lightGlyph:SetPoint("CENTER", statusLight, "CENTER", 0, 0)
+    lightGlyph:SetText("●")
+    statusLight.label = lightGlyph
+    questieDBStatusLight = statusLight
+    statusLight:SetScript("OnEnter", function(self)
+        if not GameTooltip or type(GameTooltip.SetOwner) ~= "function"
+            or type(GameTooltip.SetText) ~= "function"
+            or type(GameTooltip.AddLine) ~= "function" then return end
+        local ready, title, explanation = QuestieDBStatus()
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title, ready and 0.28 or 1, ready and 0.9 or 0.3, ready and 0.4 or 0.3)
+        GameTooltip:AddLine(explanation, 0.95, 0.95, 0.95, true)
+        GameTooltip:Show()
+    end)
+    statusLight:SetScript("OnLeave", function(self)
+        if GameTooltip and type(GameTooltip.GetOwner) == "function"
+            and GameTooltip:GetOwner() == self then
+            GameTooltip:Hide()
+        end
+    end)
+    UpdateQuestieDBStatusLight()
 
     local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
@@ -1115,6 +1206,7 @@ local function CreateOptionsPanel()
     hint:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -17, 23)
     hint:SetText("Changes apply on next hover")
     panel:SetScript("OnShow", function()
+        UpdateQuestieDBStatusLight()
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
@@ -1770,6 +1862,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "ADDON_LOADED" then
         local addonName = ...
         if addonName == "QuestieDB" then
+            UpdateQuestieDBStatusLight()
             InstallTooltipHook()
             if CHARACTER_DATA then SyncQuestHistory(true) end
             BuildQuestItemIndex()
