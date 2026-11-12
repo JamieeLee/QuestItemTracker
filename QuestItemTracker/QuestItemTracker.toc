@@ -1,5 +1,5 @@
 ## Interface: 16001
-## Title: Quest Item Tracker
+## Title: Quest Item Tracker Forever
 ## Notes: Requires QuestieDB. Track quest items; click the minimap button to customize tooltips.
 ## Author: JamieeLee
 ## Version: 0.2

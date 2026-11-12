@@ -44,6 +44,24 @@ jobs:
           python3 scripts/release_builder.py validate --tag "$RELEASE_TAG"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+      # A tag can be pushed without going through a PR. Validate the actual
+      # tagged addon source and all regression suites BEFORE either upload.
+      - name: Install Lua for release gate
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua5.3
+      - name: Validate addon Lua and mock Forever behaviors
+        run: |
+          set -euo pipefail
+          luac5.3 -p QuestItemTracker/QuestItemTracker.lua
+          luac5.3 -p tests/faction_and_source_items.lua
+          luac5.3 -p tests/minimap_options.lua
+          luac5.3 -p tests/quest_item_pathways.lua
+          luac5.3 -p tests/audit_regressions.lua
+          lua5.3 tests/faction_and_source_items.lua
+          lua5.3 tests/minimap_options.lua
+          lua5.3 tests/quest_item_pathways.lua
+          lua5.3 tests/audit_regressions.lua
       - name: Test release builder
         run: python3 -m unittest discover -s tests -p 'test_release_builder.py' -v
       - name: Build single installable ZIP + release notes
