@@ -1,12 +1,13 @@
 # Changelog
 
-All notable changes to **Quest Item Tracker (QIT)** are recorded **in this single file**, newest release first.
+All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in this single file**, newest release first.
 
-**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. The addon version in `QuestItemTracker/QuestItemTracker.toc` must have a matching heading here.
+**Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A version bump by itself does not publish a GitHub/CurseForge release; publishing is triggered by a matching `vX.Y` tag.
 
-## [Unreleased]
+## [0.3] - 2026-11-11
 
 ### Changed
+- Publish the tested branding and source-audit changes as **v0.3** instead of leaving them under the previous v0.2 version.
 - Show **Quest Item Tracker Forever** in the game's AddOns menu, settings panel, minimap tooltip, and item tooltip header. Addon folder, saved-variable keys, slash commands, and ZIP filename remain unchanged.
 - Reuse the live active quest map when looking up item relationships during database warm-up.
 - Cache the completed-quest list when the client does not support per-quest completion queries, invalidating it when the quest log changes.
@@ -16,7 +17,8 @@ All notable changes to **Quest Item Tracker (QIT)** are recorded **in this singl
 - Eliminate unused helpers and empty bag/bank event handlers.
 
 ### Tests
-- Validate all Lua syntax and mocked gameplay regressions on the tagged commit before either GitHub Release or CurseForge publishing.\n- Add a persistent mocked Forever regression test for early item lookup, multi-quest native metadata, objective-name collisions, completion caching, repeatable flags, and branding.
+- Validate all Lua syntax and mocked gameplay regressions on the tagged commit before either GitHub Release or CurseForge publishing.
+- Add a persistent mocked Forever regression test for early item lookup, multi-quest native metadata, objective-name collisions, completion caching, repeatable flags, and branding.
 
 ## [0.2] - 2026-11-11
 

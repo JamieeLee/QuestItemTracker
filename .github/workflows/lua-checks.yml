@@ -50,6 +50,42 @@ jobs:
             exit 1
           fi
 
+      - name: Require a new version for addon-code PRs
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH"
+          CHANGED=$(git diff --name-only FETCH_HEAD HEAD)
+          if echo "$CHANGED" | grep -Eq '^QuestItemTracker/QuestItemTracker\.(lua|toc)        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release_builder.py build --output dist
+          VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
+          unzip -t "dist/QITForeverV${VERSION}.zip"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Upload unpacked addon as test artifact (NO nested ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: QITForeverV${{ steps.build.outputs.version }}-test
+          path: dist/staging/
+          if-no-files-found: error; then
+            OLD=$(git show FETCH_HEAD:QuestItemTracker/QuestItemTracker.toc | sed -n 's/^## Version: //p')
+            NEW=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
+            python3 - "$OLD" "$NEW" <<'PY'
+          import sys
+          old, new = sys.argv[1:3]
+          def parts(version):
+              return tuple(int(x) for x in version.split("."))
+          if parts(new) <= parts(old):
+              raise SystemExit(f"Addon code changed, but version did not advance: {old} -> {new}. Bump the TOC version and update CHANGELOG.md.")
+          print(f"Addon version bump verified: {old} -> {new}")
+          PY
+          fi
+
       - name: Build and check test installable folder
         id: build
         shell: bash
