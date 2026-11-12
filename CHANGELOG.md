@@ -17,6 +17,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Let QIT's settings panel load without QuestieDB via WoW's `OptionalDeps` so people who install the GitHub ZIP without QuestieDB can see the warning. QuestieDB **remains required** in CurseForge metadata so the CurseForge app installs it automatically; no quest-matching or retention logic is changed.
 - Restyle the default settings panel with muted aged-gold trim, a warm charcoal background, and a subtle title band, while preserving standard WoW checkboxes, reset, and close controls for UI skin compatibility.
 - Give the existing quest-book icon a small aged-gold **FOREVER** stamp, preserving its recognizable look at addon-list and minimap sizes.
+- Align the draggable minimap icon with the same outer-rim positioning and classic button art layout used by BigWigs/LibDBIcon: orbit while dragging, adapt to minimap resizing, preserve saved position direction, and keep support for square minimap skins. No extra addon dependency.
 
 ## [0.4] - 2026-11-12
 
