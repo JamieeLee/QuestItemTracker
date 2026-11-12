@@ -801,6 +801,7 @@ end
 local DEFAULT_SETTINGS = {
     showQuestIDs = false,
     showItemIDs = false,
+    suppressExternalIDs = false,
     showQuestLevels = true,
     showInventoryBreakdown = true,
     showFutureStatusLabels = false,
@@ -810,6 +811,70 @@ local function SettingEnabled(key)
     local value = DB.settings[key]
     if value == nil then return DEFAULT_SETTINGS[key] == true end
     return value == true
+end
+
+-- This optional filter only touches isolated technical ID rows that another
+-- addon put on a shared item tooltip. It never modifies QIT's own ID settings,
+-- and stops at the QIT header so QIT-generated lines are left untouched.
+-- Tooltip font strings are reused by WoW, so restore adjusted heights on reset.
+local EXTERNAL_ID_KINDS = {
+    itemid = true, iconid = true, questid = true, spellid = true,
+    npcid = true, textureid = true, modelid = true,
+}
+local suppressedLineHeights = setmetatable({}, { __mode = "k" })
+
+local function RestoreExternalIDHeights(tooltip)
+    local stored = suppressedLineHeights[tooltip]
+    if not stored then return end
+    for fontString, height in pairs(stored) do
+        if type(height) == "number" and height > 0 then
+            SafeCall(fontString.SetHeight, fontString, height)
+        end
+    end
+    suppressedLineHeights[tooltip] = nil
+end
+
+local function SuppressExternalTooltipIDs(tooltip)
+    if not SettingEnabled("suppressExternalIDs") or not tooltip then return end
+    -- Standard GameTooltip exposes named TextLeftN/TextRightN font strings.
+    -- Do not guess at the internals of arbitrary custom tooltip frames.
+    local name = SafeCall(tooltip.GetName, tooltip)
+    local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
+    if type(name) ~= "string" or name == "" or not count then return end
+    local stored = suppressedLineHeights[tooltip]
+    for index = 1, math.min(count, 100) do
+        local left = _G[name .. "TextLeft" .. index]
+        local line = left and SafeCall(left.GetText, left)
+        if type(line) == "string" and line ~= "" then
+            if string.find(line, "Quest Item Tracker Forever", 1, true) then
+                break
+            end
+            -- A full metadata row, not explanatory prose containing "item id".
+            local clean = string.gsub(line, "|c%x%x%x%x%x%x%x%x", "")
+            clean = string.gsub(clean, "|r", "")
+            clean = string.gsub(clean, "^%s+", "")
+            clean = string.gsub(clean, "%s+$", "")
+            local label = string.match(clean, "^([%a%s]+)%s*:%s*%d*$")
+                or string.match(clean, "^([%a%s]+)%s+%d+$")
+                or string.match(clean, "^([%a%s]+)$")
+            local normalized = label and string.lower(string.gsub(label, "%s+", ""))
+            if normalized and EXTERNAL_ID_KINDS[normalized] then
+                local right = _G[name .. "TextRight" .. index]
+                stored = stored or {}
+                for _, fontString in ipairs({left, right}) do
+                    if fontString and type(fontString.SetText) == "function" then
+                        local height = SafeCall(fontString.GetHeight, fontString)
+                        if type(height) == "number" and height > 0 and stored[fontString] == nil then
+                            stored[fontString] = height
+                            SafeCall(fontString.SetHeight, fontString, 0)
+                        end
+                        SafeCall(fontString.SetText, fontString, "")
+                    end
+                end
+            end
+        end
+    end
+    if stored then suppressedLineHeights[tooltip] = stored end
 end
 
 -- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
@@ -864,7 +929,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 383)
+    panel:SetSize(360, 454)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 45)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -906,18 +971,27 @@ local function CreateOptionsPanel()
     close:SetScript("OnClick", function() panel:Hide() end)
 
     local entries = {
-        { key = "filterByFaction", label = "Only show my faction quests" },
-        { key = "showQuestIDs", label = "Show quest IDs" },
-        { key = "showItemIDs", label = "Show item IDs" },
-        { key = "showQuestLevels", label = "Show quest levels" },
-        { key = "showInventoryBreakdown", label = "Show bag / bank breakdown" },
-        { key = "showFutureStatusLabels", label = "Show future quest labels" },
+        { key = "filterByFaction", label = "Only show my faction quests", y = -87 },
+        { key = "suppressExternalIDs", label = "Hide IDs from other addons", y = -154 },
+        { key = "showQuestIDs", label = "Show QIT quest IDs", y = -190 },
+        { key = "showItemIDs", label = "Show QIT item IDs", y = -226 },
+        { key = "showQuestLevels", label = "Show quest levels", y = -285 },
+        { key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321 },
+        { key = "showFutureStatusLabels", label = "Show future quest labels", y = -357 },
     }
+    local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
+    idsHeading:SetText("ID DISPLAY")
+    idsHeading:SetTextColor(0.4, 0.78, 1, 1)
+    local detailsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    detailsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -263)
+    detailsHeading:SetText("OTHER DETAILS")
+    detailsHeading:SetTextColor(0.4, 0.78, 1, 1)
     local checkboxes = {}
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         checkbox:SetSize(25, 25)
-        checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, -86 - (i - 1) * 36)
+        checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 22, entry.y)
         checkbox:SetChecked(SettingEnabled(entry.key))
         local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
@@ -1280,6 +1354,9 @@ end
 
 local function RunTooltipHook(tooltip, data, explicitItemID)
     local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
+    -- Most bag addons place ID rows before the QIT section. Handle them even
+    -- when the item has no quest associations and QIT adds no lines.
+    SuppressExternalTooltipIDs(tooltip)
     if not ok and not tooltipErrorReported then
         tooltipErrorReported = true
         Print("Tooltip error (first occurrence): " .. tostring(err))
@@ -1299,14 +1376,21 @@ local function HookTooltipFrame(tooltip)
 
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
             decoratedTooltips[self] = nil
+            RestoreExternalIDHeights(self)
         end)
         pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
             decoratedTooltips[self] = nil
+            RestoreExternalIDHeights(self)
         end)
         ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
             RunTooltipHook(self)
         end)
         if ok then hooked = true end
+        -- Third-party tooltip callbacks can append IDs after our callbacks;
+        -- recheck only while the opt-in setting is enabled.
+        pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self)
+            SuppressExternalTooltipIDs(self)
+        end)
     end
 
     -- Certain inventory addons use setter methods without publishing a typed
@@ -1318,6 +1402,7 @@ local function HookTooltipFrame(tooltip)
         if type(tooltip.ClearLines) == "function" then
             pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
                 decoratedTooltips[self] = nil
+                RestoreExternalIDHeights(self)
             end)
         end
         if type(tooltip.SetBagItem) == "function" then
