@@ -16,6 +16,7 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 - Add a tiny **circular green/red QuestieDB status light** to the settings menu (a real transparent texture, not a font square). Its hover starts with **Quest Item Tracker Forever is ready** or **needs attention**, then explains whether QuestieDB is installed, disabled, unloaded, or incompatible.
 - Let QIT's settings panel load without QuestieDB via WoW's `OptionalDeps` so people who install the GitHub ZIP without QuestieDB can see the warning. QuestieDB **remains required** in CurseForge metadata so the CurseForge app installs it automatically; no quest-matching or retention logic is changed.
 - Restyle the default settings panel with muted aged-gold trim, a warm charcoal background, and a subtle title band, while preserving standard WoW checkboxes, reset, and close controls for UI skin compatibility.
+- Give the existing quest-book icon a small aged-gold **FOREVER** stamp, preserving its recognizable look at addon-list and minimap sizes.
 
 ## [0.4] - 2026-11-12
 
