@@ -16,7 +16,7 @@ All notable changes to **Quest Item Tracker (QIT)** are recorded **in this singl
 - Eliminate unused helpers and empty bag/bank event handlers.
 
 ### Tests
-- Add a persistent mocked Forever regression test for early item lookup, multi-quest native metadata, objective-name collisions, completion caching, repeatable flags, and branding.
+- Validate all Lua syntax and mocked gameplay regressions on the tagged commit before either GitHub Release or CurseForge publishing.\n- Add a persistent mocked Forever regression test for early item lookup, multi-quest native metadata, objective-name collisions, completion caching, repeatable flags, and branding.
 
 ## [0.2] - 2026-11-11
 
