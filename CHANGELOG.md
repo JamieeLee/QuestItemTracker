@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.6] - 2026-11-14
+
+- **Clearer item guidance:** Highlight the KEEP / NEEDED / SAFE TO DELETE decision while displaying its explanation in quieter, readable ivory.
+- **Seasonal quest labels:** Show an orange **SEASONAL QUEST** heading for known holiday categories in QuestieDB's WoW Forever data, including Winter Veil. Seasonal repeatables retain their repeatable status, with no date or event-availability assumptions.
+- **Native quest difficulty colors:** Color quest names using WoW Forever's own difficulty-color API relative to the character's level, with a neutral fallback if unavailable.
+- **Faction turn-in styling:** Use subdued Horde crimson or Alliance blue-violet headings, with a neutral parchment fallback. Existing faction filtering remains enabled by default and is unchanged.
+- **Same quest decisions and data source:** Keep QuestieDB as the only required data addon, without changing item-retention decisions or claiming seasonal quests are currently available.
+
 ## [0.5] - 2026-11-12
 
 - **Cleaner item tooltips:** Optionally hide extra ItemID and IconID lines added by other addons. This is off by default; QITF's own quest and item IDs remain separate options.

@@ -627,6 +627,50 @@ local function IsQuestRepeatableByID(questID)
     return flags ~= nil and flags > 0 and flags % 2 == 1
 end
 
+-- Holiday categories are supplied by QuestieDB's current flavor (Forever),
+-- not by full Questie or a guessed real-world holiday schedule.
+-- This is display-only: it must never make an item safer to delete or change KEEP.
+local SEASONAL_SORT_NAMES = {
+    "WINTER_VEIL", "HARVEST_FESTIVAL", "CHILDRENS_WEEK",
+    "LOVE_IS_IN_THE_AIR", "PILGRIMS_BOUNTY", "NOBLEGARDEN",
+    "BREWFEST", "MIDSUMMER", "LUNAR_FESTIVAL",
+    "DARKMOON_FAIRE", "DAY_OF_THE_DEAD", "SEASONAL", "HALLOWS_END",
+}
+-- Some quests use a geographical zone sort in older data snapshots even
+-- though their known event association is unambiguous. Keep this tiny,
+-- known event-quest fallback isolated from the general category rules.
+local VERIFIED_SEASONAL_QUESTS = {
+    [6962] = true, -- Treats for Great-father Winter
+    [7025] = true, -- Treats for Greatfather Winter
+}
+
+local function IsSeasonalQuestByID(questID)
+    if VERIFIED_SEASONAL_QUESTS[tonumber(questID)] then return true end
+    local questSort = tonumber(SafeCall(QuestDB and QuestDB.zoneOrSort, questID))
+    if not questSort or questSort >= 0 then return false end
+    local enums = LibQuestieDB and LibQuestieDB.Enum
+    local sorts = enums and enums.sortKeys
+    if type(sorts) ~= "table" then return false end
+    for _, name in ipairs(SEASONAL_SORT_NAMES) do
+        if questSort == tonumber(sorts[name]) then return true end
+    end
+    return false
+end
+
+-- Let the WoW Forever client choose the quest difficulty category relative
+-- to the character, rather than reimplementing level thresholds ourselves.
+local function QuestNameColor(questLevel)
+    local color = questLevel and SafeCall(GetQuestDifficultyColor, questLevel)
+    if type(color) == "table" and type(color.r) == "number"
+        and type(color.g) == "number" and type(color.b) == "number" then
+        local function Byte(value)
+            return math.floor(math.max(0, math.min(1, value)) * 255 + 0.5)
+        end
+        return string.format("|cff%02x%02x%02x", Byte(color.r), Byte(color.g), Byte(color.b))
+    end
+    return "|cffe8edf2" -- neutral ivory when the client's API has no answer
+end
+
 local function GetQuestLevel(questID, activeInfo)
     if activeInfo and type(activeInfo.level) == "number" and activeInfo.level > 0 then
         return activeInfo.level
@@ -1486,14 +1530,23 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         recommendation = nil
     end
     if recommendation then
-        tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
+        -- The decision is the attention color; its explanation is quiet ivory.
+        local separator = string.find(recommendation, " — ", 1, true)
+        if separator then
+            local decision = string.sub(recommendation, 1, separator - 1)
+            local explanation = string.sub(recommendation, separator)
+            tooltip:AddLine(recommendationColor .. decision .. "|r|cffd8dee8"
+                .. explanation .. "|r", 0.9, 0.9, 0.9, true)
+        else
+            tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
+        end
     end
 
     -- Build a display-only layout from the already-filtered matches. Grouped
     -- headings avoid repeating the same REPEATABLE / GREY label per quest.
     -- Retention and per-quest status calculations above remain authoritative.
     local activeCount, futureCount, completedCount = 0, 0, 0
-    local ordinaryQuests, repeatableQuests, lowLevelQuests, factionTurnIns = {}, {}, {}, {}
+    local ordinaryQuests, repeatableQuests, seasonalQuests, lowLevelQuests, factionTurnIns = {}, {}, {}, {}, {}
     for _, questID in ipairs(ids) do
         local entry = matches[questID]
         local active = activeMap[questID]
@@ -1517,10 +1570,15 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             level = GetQuestLevel(questID, active),
             status = status,
             color = color,
+            seasonal = IsSeasonalQuestByID(questID),
             rewardOrigin = IsInformationalOnly(entry)
                 and (entry.sources or {})["database quest reward"],
         }
-        if not IsInformationalOnly(entry) and
+        if row.seasonal then
+            -- Show the seasonal marker above this quest without hiding it in
+            -- the ordinary repeatable group. The quest can still be repeatable.
+            seasonalQuests[#seasonalQuests + 1] = row
+        elseif not IsInformationalOnly(entry) and
             (IsQuestRepeatableByID(questID) or (active and IsRepeatableQuest(active))) then
             repeatableQuests[#repeatableQuests + 1] = row
         elseif status == "FUTURE USE · GREY QUEST" then
@@ -1552,6 +1610,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 row.status or "",
                 row.color or "",
                 row.rewardOrigin and "reward" or "ordinary",
+                row.seasonal and "seasonal" or "ordinary",
                 tostring(entry.required or ""),
                 tostring(entry.detail or ""),
             }, "\031")
@@ -1570,7 +1629,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     local function ShowQuestRow(row, grouped)
         local indent = grouped and "    " or "  "
         local nameIndent = grouped and "  " or ""
-        local nameLine = nameIndent .. row.color
+        local nameLine = nameIndent .. QuestNameColor(row.level)
             .. (row.rewardOrigin and "Reward from: " or "") .. row.name .. "|r"
         if showLevels then
             nameLine = nameLine .. "  (" .. (row.level and ("Level " .. row.level) or "Level unknown") .. ")"
@@ -1623,9 +1682,24 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         end
     end
 
+    if #seasonalQuests > 0 then
+        tooltip:AddLine("|cffff992f— SEASONAL QUEST —|r")
+        for _, row in ipairs(CompactQuestRows(seasonalQuests)) do ShowQuestRow(row, "seasonal") end
+    end
     for _, row in ipairs(CompactQuestRows(ordinaryQuests)) do ShowQuestRow(row, nil) end
     if #factionTurnIns > 0 then
-        tooltip:AddLine("FACTION TURN-INS", 0.4, 0.78, 1)
+        -- A restrained faction accent makes this heading distinct from the
+        -- cyan addon header and from red/orange/yellow quest difficulty text.
+        -- The player's faction is already detected by the existing filter;
+        -- this is purely presentation and must not alter which quests appear.
+        local faction = SafeCall(UnitFactionGroup, "player")
+        local headingColor = "|cffc7b497" -- neutral parchment fallback
+        if faction == "Horde" then
+            headingColor = "|cffcf8088" -- weathered Horde crimson
+        elseif faction == "Alliance" then
+            headingColor = "|cff889ee0" -- Alliance blue with violet undertone
+        end
+        tooltip:AddLine(headingColor .. "FACTION TURN-INS|r")
         for _, row in ipairs(CompactQuestRows(factionTurnIns)) do ShowQuestRow(row, "faction") end
     end
     if #repeatableQuests > 0 then
