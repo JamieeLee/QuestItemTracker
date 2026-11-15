@@ -32,7 +32,10 @@ _G.BANK_CONTAINER = -1
 _G.UnitName=function() return 'Tester' end
 _G.GetRealmName=function() return 'Forever' end
 _G.GetBuildInfo=function() return '1.60','x','x',16001 end
-_G.GetQuestDifficultyColor=function() return {r=1,g=0.5,b=0} end
+_G.GetQuestDifficultyColor=function(level)
+  if level == 6 then return {r=0.55,g=0.55,b=0.55} end
+  return {r=1,g=0.5,b=0}
+end
 _G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone'})[id] end}
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end}
@@ -451,7 +454,10 @@ assert(clean:find('REPEATABLE QUESTS',1,true)<clean:find('LOW-LEVEL QUESTS',1,tr
   'low-level group should be after repeatables')
 assert(not clean:find('FUTURE QUEST',1,true) and not clean:find('FUTURE USE',1,true),'future status lines should be suppressed by default')
 assert(not clean:find('No current quest needs',1,true),'redundant future footer must be suppressed')
-assert(clean:find('|cffc0c0c0Grey Forager',1,true),'grey quest color code is malformed')
+assert(clean:find('|cff8c8c8cGrey Forager',1,true),
+  'low-level quest name did not use WoW native difficulty color')
+assert(clean:find('|cffff8000Chen',1,true),
+  'normal quest name did not use WoW native difficulty color')
 assert(clean:find('Have 5 / Need 5',1,true),'Have/Need was lost')
 assert(clean:find('(Level 15)',1,true),'quest level should appear by default')
 assert(not clean:find('Quest ID:',1,true) and not clean:find('Item ID:',1,true),'IDs visible by default')
