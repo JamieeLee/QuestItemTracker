@@ -23,6 +23,13 @@ WHAT QITF RECOGNIZES
 - Faction-appropriate future/repeatable quests, and your active quests.
 - Inventory quantities in bags and the personal bank while it is open.
 
+V0.6 TOOLTIP PRESENTATION
+- Seasonal quest associations show an orange SEASONAL QUEST heading.
+- Quest names use the game's level-based difficulty colors.
+- KEEP / NEEDED guidance emphasizes the action without bright explanation text.
+- FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
+- Existing faction filtering and retention decisions are unchanged.
+
 TOOLTIP PREFERENCES
 Click the draggable minimap button, or type /qit options.
 - Hover over a setting for an explanation.
