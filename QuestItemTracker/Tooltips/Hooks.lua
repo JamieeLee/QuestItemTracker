@@ -28,22 +28,42 @@ local function AddNativeID(tooltip, label, id)
     tooltip:AddLine(label .. " ID: " .. tostring(id), 0.75, 0.75, 0.75)
 end
 
-local function RunTooltipHook(tooltip, data, explicitItemID)
-    local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
-    -- Relevant quest items already get their Item ID in Render.lua. For
-    -- ordinary items, add it here without running a second quest renderer.
-    if ok and err ~= true then
-        local itemID = GetTooltipItem(tooltip, data, explicitItemID)
-        AddNativeID(tooltip, "Item", itemID)
+-- Item and spell ID writes must share the same error boundary as quest
+-- rendering. Secure or unusual tooltip frames can reject AddLine.
+local function ReportTooltipError(err)
+    if S.tooltipErrorReported then return end
+    S.tooltipErrorReported = true
+    Print("Tooltip error (first occurrence): " .. tostring(err))
+end
+
+local function RenderItemTooltip(tooltip, data, explicitItemID)
+    local decorated = AddTooltipLines(tooltip, data, explicitItemID)
+    if not decorated then
+        -- QITF quest items already have their Item ID in Render.lua. Ordinary
+        -- items get one native line here, without redoing the quest list.
+        AddNativeID(tooltip, "Item", GetTooltipItem(tooltip, data, explicitItemID))
     end
+    return decorated
+end
+
+local function RunTooltipHook(tooltip, data, explicitItemID)
+    local ok, decorated = pcall(RenderItemTooltip, tooltip, data, explicitItemID)
     -- If Shift was already held as the player hovered the item, pin on the
     -- same callback: some bag UIs dismiss their item tooltip immediately.
-    if ok and err == true and not S.pinnedInfo and SafeCall(IsShiftKeyDown) then
+    if ok and decorated == true and not S.pinnedInfo and SafeCall(IsShiftKeyDown) then
         PinCurrentItem(tooltip)
     end
-    if not ok and not S.tooltipErrorReported then
-        S.tooltipErrorReported = true
-        Print("Tooltip error (first occurrence): " .. tostring(err))
+    if not ok then
+        nativeIDRows[tooltip] = nil
+        ReportTooltipError(decorated)
+    end
+end
+
+local function RunSpellTooltipHook(tooltip, data)
+    local ok, err = pcall(AddNativeID, tooltip, "Spell", data and data.id)
+    if not ok then
+        nativeIDRows[tooltip] = nil
+        ReportTooltipError(err)
     end
 end
 
@@ -134,9 +154,7 @@ local function InstallTooltipHook()
         if Enum.TooltipDataType.Spell then
             local spellOk = pcall(TooltipDataProcessor.AddTooltipPostCall,
                 Enum.TooltipDataType.Spell,
-                function(tooltip, data)
-                    AddNativeID(tooltip, "Spell", data and data.id)
-                end)
+                RunSpellTooltipHook)
             if spellOk then hooked = true end
         end
     end
