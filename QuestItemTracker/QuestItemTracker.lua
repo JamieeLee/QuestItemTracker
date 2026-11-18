@@ -1750,6 +1750,9 @@ local function PinCurrentItem(tooltip)
             if type(f.SetFrameStrata) == "function" then f:SetFrameStrata("TOOLTIP") end
             if type(f.SetFrameLevel) == "function" then f:SetFrameLevel(500) end
             if type(f.EnableMouse) == "function" then f:EnableMouse(false) end
+            if type(f.SetClampedToScreen) == "function" then
+                f:SetClampedToScreen(true)
+            end
             pinnedFrame = f
         end
     end
@@ -2478,6 +2481,9 @@ end
 -- addons may replace their tooltip frame while Shift remains held.
 local pinWatchElapsed = 0
 local frame = CreateFrame("Frame")
+-- An unparented data frame has no visual impact, but it must remain shown
+-- or WoW may stop delivering OnUpdate while the source tooltip is hidden.
+frame:Show()
 frame:SetScript("OnUpdate", function(_, elapsed)
     pinWatchElapsed = pinWatchElapsed + (tonumber(elapsed) or 0)
     if pinWatchElapsed < 0.05 then return end
