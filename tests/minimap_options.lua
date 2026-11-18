@@ -601,22 +601,22 @@ if GameTooltip.scripts.OnHide then GameTooltip.scripts.OnHide(GameTooltip) end
 tooltip(43000)
 assert(pinned:IsShown() and table.concat(pinned.qitLines,'\n')==snapshot,
   'moving to another bag item must not replace the Shift-pinned item')
-local pinnedQuestRow
+local groupedHit
 for _, f in ipairs(frames) do
   if f.parent==pinned and f.scripts.OnEnter then
-    pinnedQuestRow=f
-    break
+    assert(f.mouseEnabled==true,'pinned row must accept mouse input')
+    f.scripts.OnEnter(f)
+    local detail=bubble.qitLines and table.concat(bubble.qitLines,' ') or ''
+    if bubble.shown and detail:find('Quartermaster 1',1,true)
+      and detail:find('Quartermaster 5',1,true) then
+      groupedHit=f
+      break
+    end
+    f.scripts.OnLeave(f)
   end
 end
-assert(pinnedQuestRow and pinnedQuestRow.mouseEnabled==true,
-  'pinned quest row must be a separate interactive hit target')
-pinnedQuestRow.scripts.OnEnter(pinnedQuestRow)
-assert(bubble.shown,'hovering pinned quest row must show destination bubble')
-local pinnedDetail=table.concat(bubble.qitLines,' ')
-assert(pinnedDetail:find('Quartermaster 1',1,true)
-   and pinnedDetail:find('Quartermaster 5',1,true),
-   'pinned grouped hover lost individual turn-in destinations')
-pinnedQuestRow.scripts.OnLeave(pinnedQuestRow)
+assert(groupedHit,'grouped donation quest must have a usable hit target and all finishers')
+groupedHit.scripts.OnLeave(groupedHit)
 assert(not bubble.shown,'leaving pinned quest row must close bubble')
 shiftDown=false
 pinController.scripts.OnUpdate(pinController,0.2)
