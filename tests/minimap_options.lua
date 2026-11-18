@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.1' end
+  if key=='Version' then return '0.7-beta.2' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -38,7 +38,13 @@ _G.GetQuestDifficultyColor=function(level)
 end
 _G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone',[43000]='Single Turn-in Item'})[id] end}
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
-_G.LibQuestieDB={RequireContract=function(v) return v==4 end}
+_G.LibQuestieDB={
+  RequireContract=function(v) return v==4 end,
+  Support={Get=function(name)
+    assert(name=='ZoneDB')
+    return {private={areaIdToUiMapId='return {[12]=1429,[1637]=1454,[1519]=1453}'}}
+  end},
+}
 _G.QuestDB={
   GetAllIds=function() return {821,700,701,901,902,1001,1002,1003,1004,1005} end,
   name=function(id)
@@ -72,7 +78,13 @@ _G.NpcDB={
     if id>=3001 and id<=3005 then return 'Quartermaster '..(id-3000) end
   end,
   zoneID=function(id) return id==2001 and 12 or 1637 end,
-  spawns=function(id) return {[id==2001 and 12 or 1637]={{42.5,67.2}}} end,
+  spawns=function(id)
+    if id==2001 then return {[12]={{42.5,67.2}}} end
+    if id>=3001 and id<=3005 then
+      local n=id-3000
+      return {[1637]={{10+15*n,10+15*n}}}
+    end
+  end,
 }
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
@@ -107,6 +119,7 @@ local function MockFrame(kind,name,parent)
     end
   end
   function f:GetScript(event) return self.scripts[event] end
+  function f:GetName() return self.name end
   function f:Show() self.shown=true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
   function f:Hide() self.shown=false end
   function f:IsShown() return self.shown end
@@ -121,6 +134,7 @@ local function MockFrame(kind,name,parent)
   function f:StartMoving() self.moving=true end
   function f:StopMovingOrSizing() self.moving=false end
   function f:SetFrameStrata() end
+  function f:SetFrameLevel(level) self.level=level end
   function f:SetClampedToScreen() end
   function f:EnableMouse() end
   function f:SetMovable() end
@@ -139,8 +153,21 @@ local function MockFrame(kind,name,parent)
   if kind=='GameTooltip' then
     f.lines={}
     function f:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor end
-    function f:AddLine(line) self.lines[#self.lines+1]=line end
+    function f:AddLine(line)
+      self.lines[#self.lines+1]=line
+      local index=#self.lines
+      _G[name..'TextLeft'..index]={
+        GetText=function() return line end,
+        GetTop=function() return 600-(index-1)*16 end,
+        GetBottom=function() return 586-(index-1)*16 end,
+      }
+    end
     function f:ClearLines() self.lines={} end
+    function f:NumLines() return #self.lines end
+    function f:GetLeft() return 200 end
+    function f:GetRight() return 520 end
+    function f:GetEffectiveScale() return 1 end
+    function f:IsShown() return self.shown end
   end
   frames[#frames+1]=f
   return f
@@ -156,16 +183,20 @@ function Minimap:GetEffectiveScale() return 1 end
 local minimapShape='ROUND'
 _G.GetMinimapShape=function() return minimapShape end
 local cursorX,cursorY=590,540
+local shiftDown=false
+_G.IsShiftKeyDown=function() return shiftDown end
 _G.GetCursorPosition=function() return cursorX,cursorY end
 local typedHook
 _G.Enum={TooltipDataType={Item=222}}
 _G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
 _G.GameTooltip={lines={},scripts={}}
 function GameTooltip:GetLeft() return 200 end
+function GameTooltip:GetTop() return 600 end
 function GameTooltip:GetRight() return 520 end
 function GameTooltip:GetEffectiveScale() return 1 end
 function GameTooltip:IsShown() return self.shown end
 function UIParent:GetWidth() return 1200 end
+function UIParent:GetEffectiveScale() return 1 end
 function GameTooltip:HookScript(event,fn) self.scripts[event]=fn end
 local function tooltipFontString(value,index)
   return {text=value,index=index,height=14,
@@ -361,7 +392,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.1' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.2' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -447,6 +478,8 @@ local busy=tooltip(4894)
 assert(not busy:find('Turn in:',1,true),
   'crowded item must not add inline turn-in lines')
 assert(busy:find('(5 quests)',1,true),'five faction quests should stay collapsed')
+assert(not busy:find('Closest:',1,true),
+  'no installed navigation addon must mean no nearest turn-in hint')
 local donationLine
 for index, line in ipairs(GameTooltip.lines) do
   if line:find('A Donation of Wool',1,true) then donationLine=index; break end
@@ -468,6 +501,72 @@ end
 cursorX,cursorY=100,500
 GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
 assert(not bubble.shown,'side bubble must hide after leaving quest row')
+
+
+-- A compatible navigation addon may add ONE closest suggestion using read-only
+-- position and quest-finisher spawn data, not any waypoint side effects.
+local hbd={
+  GetPlayerWorldPosition=function() return 400,400,1 end,
+  GetWorldCoordinatesFromZone=function(_,x,y,map)
+    if map==1454 then return x*1000,y*1000,1 end
+  end,
+}
+_G.LibStub=function(name,optional)
+  if name=='HereBeDragons-2.0' then return hbd end
+end
+_G.TomTom={
+  GetCurrentPlayerPosition=function() return 1454,0.4,0.4 end,
+  AddWaypoint=function() error('QIT must never create a waypoint') end,
+  SetCrazyArrow=function() error('QIT must never change navigation') end,
+}
+local withNavigation=tooltip(4894)
+assert(withNavigation:find('Closest:',1,true),
+  'TomTom with usable world coordinates should show a nearest hint')
+assert(withNavigation:find('Quartermaster 2 — Orgrimmar',1,true),
+  'nearest hint should choose the actually nearest known NPC and city')
+assert(not withNavigation:find('Turn in:',1,true),
+  'nearest hint must not expand the busy tooltip')
+_G.TomTom=nil
+assert(not tooltip(4894):find('Closest:',1,true),
+  'removing the navigation provider should remove the nearest hint')
+_G.LibStub=nil
+
+-- Shift pins the original item information independently of the bag tooltip.
+local beforePin=tooltip(4894)
+shiftDown=true
+GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+local pinned
+for _,f in ipairs(frames) do
+  if f.name=='QITPinnedItemInfo' then pinned=f end
+end
+assert(pinned and pinned:IsShown(),'Shift must create and show an independent info panel')
+local snapshot=table.concat(pinned.lines,'\n')
+assert(snapshot:find('A Donation of Wool',1,true)
+  and snapshot:find('(5 quests)',1,true),
+  'pinned panel must preserve the original grouped quest information')
+-- Simulate the normal bag tooltip closing and being reused for another item.
+GameTooltip:Hide()
+if GameTooltip.scripts.OnHide then GameTooltip.scripts.OnHide(GameTooltip) end
+tooltip(43000)
+assert(pinned:IsShown() and table.concat(pinned.lines,'\n')==snapshot,
+  'moving to another bag item must not replace the Shift-pinned item')
+local pinnedDonation
+for index,line in ipairs(pinned.lines) do
+  if line:find('A Donation of Wool',1,true) then pinnedDonation=index;break end
+end
+assert(pinnedDonation,'pinned copy has no hoverable quest row')
+cursorX,cursorY=300,593-(pinnedDonation-1)*16
+pinned.scripts.OnUpdate(pinned,0.2)
+assert(bubble.shown,'hovering grouped quest in pinned panel must show bubble')
+local pinnedDetail=table.concat(bubble.lines,' ')
+assert(pinnedDetail:find('Quartermaster 1',1,true)
+   and pinnedDetail:find('Quartermaster 5',1,true),
+   'pinned grouped hover bubble lost individual turn-in destinations')
+shiftDown=false
+pinned.scripts.OnUpdate(pinned,0.2)
+assert(not pinned:IsShown() and not bubble.shown,
+  'releasing Shift must close pinned panel and its side bubble')
+cursorX,cursorY=100,500
 
 -- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
 local function withExternalIDs()
