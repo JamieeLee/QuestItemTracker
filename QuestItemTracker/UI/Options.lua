@@ -128,7 +128,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 540)
+    panel:SetSize(360, 480)
     RestoreOptionsPanelPosition(panel)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -220,73 +220,51 @@ local function CreateOptionsPanel()
     close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -5, -5)
     close:SetScript("OnClick", function() panel:Hide() end)
 
-    -- Keep the menu labels short. Hover over any option to understand its
-    -- effect in everyday language; the item tooltip itself stays uncluttered.
     local entries = {
         {
-            key = "filterByFaction", label = "Only show my faction quests", y = -87,
-            help = "Show quests meant for your faction, along with neutral quests. "
-                .. "Quests marked for the opposite faction are hidden. "
-                .. "Quests you're already working on still appear.",
+            key = "filterByFaction", label = "Only show my faction quests", y = -102,
+            help = "Show your faction and neutral quests. Hide quests explicitly "
+                .. "restricted to the other faction; active quests remain visible.",
         },
         {
-            key = "suppressExternalIDs", label = "Hide IDs from other addons", y = -154,
-            help = "Hide extra number-only details, such as ItemID and IconID, "
-                .. "that other addons put on item tooltips. "
-                .. "This is off by default and does not change the other addons' settings "
-                .. "or hide IDs shown by QITF.",
+            key = "showIDs", label = "Show IDs", y = -163,
+            help = "Show technical identifiers in item and quest tooltips. "
+                .. "When off, recognizable ID rows from UI addons are also "
+                .. "hidden without modifying the original tooltip text or sizing.",
         },
         {
-            key = "showQuestIDs", label = "Show QITF quest IDs", y = -190,
-            help = "Show the identifying number for each quest listed by QITF. "
-                .. "For example, you can use a quest ID to identify a particular quest "
-                .. "when asking for help. This does not control IDs from other addons.",
+            key = "showQuestLevels", label = "Show quest levels", y = -230,
+            help = "Show each quest's level next to its name.",
         },
         {
-            key = "showItemIDs", label = "Show QITF item IDs", y = -226,
-            help = "Show the item's identifying number inside QITF's section of "
-                .. "the tooltip. This can help when reporting an item problem. "
-                .. "Other addons' ItemID lines are controlled by the option above.",
+            key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -266,
+            help = "Show the number of copies in your bags and bank alongside the total.",
         },
         {
-            key = "showQuestLevels", label = "Show quest levels", y = -285,
-            help = "Show each quest's level next to its name, such as Level 60. "
-                .. "Turn this off for shorter quest names without changing which quests appear.",
+            key = "showTurnInDetails", label = "Show turn-in NPC and zone", y = -338,
+            help = "Show the quest-finisher name and zone from QuestieDB, when known. "
+                .. "No waypoints are created.",
         },
         {
-            key = "showInventoryBreakdown", label = "Show bag / bank breakdown", y = -321,
-            help = "Show how many copies of an item are in your bags and bank, "
-                .. "next to the total you have. Turn this off to see just the total; "
-                .. "QITF still counts your items.",
-        },
-        {
-            key = "showFutureStatusLabels", label = "Show future quest labels", y = -357,
-            help = "Add extra explanations for quests you could do later, "
-                .. "such as FUTURE QUEST, plus a summary when an item has only future uses. "
-                .. "Leaving this off keeps the tooltip shorter without removing "
-                .. "important KEEP or NEEDED advice.",
-        },
-        {
-            key = "showTurnInDetails", label = "Show turn-in NPC and zone", y = -394,
-            help = "Show where to hand in a quest item using QuestieDB's known "
-                .. "quest-finisher name and zone. Unknown destinations are omitted. "
-                .. "This is on by default; it does not add map tracking.",
-        },
-        {
-            key = "showTurnInCoordinates", label = "Show turn-in coordinates", y = -430,
-            help = "Add one known location's coordinates after the NPC and zone, "
-                .. "when QuestieDB has them. Off by default. Requires the "
-                .. "turn-in NPC and zone option above.",
+            key = "showTurnInCoordinates", label = "Show turn-in coordinates", y = -374,
+            help = "Display known coordinates when turn-in information is enabled. "
+                .. "Off by default.",
         },
     }
-    local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    idsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -132)
-    idsHeading:SetText("ID DISPLAY")
-    if type(idsHeading.SetTextColor) == "function" then idsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
-    local detailsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    detailsHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, -263)
-    detailsHeading:SetText("OTHER DETAILS")
-    if type(detailsHeading.SetTextColor) == "function" then detailsHeading:SetTextColor(0.82, 0.65, 0.38, 1) end
+    local headings = {
+        { title = "FACTION", y = -84 },
+        { title = "IDENTIFIERS", y = -143 },
+        { title = "TOOLTIP DISPLAY", y = -208 },
+        { title = "TURN-IN INFORMATION", y = -316 },
+    }
+    for _, heading in ipairs(headings) do
+        local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", panel, "TOPLEFT", 25, heading.y)
+        label:SetText(heading.title)
+        if type(label.SetTextColor) == "function" then
+            label:SetTextColor(0.82, 0.65, 0.38, 1)
+        end
+    end
     local checkboxes = {}
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
