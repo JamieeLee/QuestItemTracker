@@ -86,7 +86,7 @@ ItemRefTooltip=nil
 Minimap=nil
 UIParent=nil
 
-assert(loadfile(file))('QuestItemTracker')
+dofile('tests/load_addon.lua')()
 assert(eventFrame and eventFrame.scripts.OnEvent,'addon event handler missing')
 local onEvent=eventFrame.scripts.OnEvent
 onEvent(eventFrame,'PLAYER_LOGIN')
