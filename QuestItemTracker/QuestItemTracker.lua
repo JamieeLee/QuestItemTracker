@@ -1528,6 +1528,114 @@ local function QuestTurnInDetails(questID, withCoordinates)
 end
 
 
+
+-- Optional, read-only navigation hint. This currently recognizes TomTom with
+-- either a shared HereBeDragons map-math API or the native C_Map world-position
+-- API. A waypoint API by itself cannot rank arbitrary turn-in destinations.
+-- Never create, move, clear, or replace another addon's waypoints.
+local areaToUiMapID
+local function TurnInUiMapID(areaID)
+    if not areaToUiMapID then
+        local support = LibQuestieDB and LibQuestieDB.Support
+        local zone = SafeCall(support and support.Get, "ZoneDB")
+        local source = zone and zone.private and zone.private.areaIdToUiMapId
+        local decoder = type(source) == "string" and (loadstring or load) or nil
+        local chunk = decoder and SafeCall(decoder, source)
+        local decoded = chunk and SafeCall(chunk)
+        if type(decoded) == "table" then areaToUiMapID = decoded end
+    end
+    return areaToUiMapID and tonumber(areaToUiMapID[tonumber(areaID)])
+end
+
+local function TomTomReadOnlyPosition()
+    if type(TomTom) ~= "table" or type(TomTom.GetCurrentPlayerPosition) ~= "function" then
+        return nil
+    end
+    local hbd = SafeCall(LibStub, "HereBeDragons-2.0", true)
+    if type(hbd) == "table"
+        and type(hbd.GetPlayerWorldPosition) == "function"
+        and type(hbd.GetWorldCoordinatesFromZone) == "function" then
+        local px, py, instance = SafeCall(hbd.GetPlayerWorldPosition, hbd)
+        if type(px) == "number" and type(py) == "number"
+            and type(instance) == "number" then
+            return px, py, instance, function(uiMapID, x, y)
+                return SafeCall(hbd.GetWorldCoordinatesFromZone, hbd, x / 100, y / 100, uiMapID)
+            end
+        end
+    end
+    -- Some Forever clients/nav builds use C_Map rather than HereBeDragons.
+    if not C_Map or type(C_Map.GetBestMapForUnit) ~= "function"
+        or type(C_Map.GetPlayerMapPosition) ~= "function"
+        or type(C_Map.GetWorldPosFromMapPos) ~= "function"
+        or type(CreateVector2D) ~= "function" then return nil end
+    local uiMapID = SafeCall(C_Map.GetBestMapForUnit, "player")
+    local localPos = uiMapID and SafeCall(C_Map.GetPlayerMapPosition, uiMapID, "player")
+    local instance, world = localPos
+        and SafeCall(C_Map.GetWorldPosFromMapPos, uiMapID, localPos)
+    local px, py = world and SafeCall(world.GetXY, world)
+    if not px or not py or not instance then return nil end
+    return px, py, instance, function(mapID, x, y)
+        local vec = SafeCall(CreateVector2D, x / 100, y / 100)
+        if not vec then return nil end
+        local continent, point = SafeCall(C_Map.GetWorldPosFromMapPos, mapID, vec)
+        local wx, wy = point and SafeCall(point.GetXY, point)
+        return wx, wy, continent
+    end
+end
+
+local function ClosestFactionTurnIn(row)
+    if #row.ids < 2 or not SettingEnabled("showTurnInDetails") then return nil end
+    local px, py, instance, toWorld = TomTomReadOnlyPosition()
+    if not (px and py and instance and toWorld) then return nil end
+    local best, bestSquared
+    -- Require a valid map coordinate for *every* grouped quest before
+    -- claiming closest. Otherwise we might omit an unindexed nearer NPC.
+    for _, questID in ipairs(row.ids) do
+        local finishers = SafeCall(QuestDB and QuestDB.finishedBy, questID)
+        local foundAny = false
+        if type(finishers) ~= "table" then return nil end
+        for kind = 1, 2 do
+            local provider = kind == 1 and NpcDB or ObjectDB
+            local ids = finishers[kind]
+            if type(ids) == "table" and type(provider) == "table" then
+                for _, id in ipairs(ids) do
+                    local name = SafeCall(provider.name, id)
+                    local spawns = SafeCall(provider.spawns, id)
+                    if type(name) == "string" and type(spawns) == "table" then
+                        for areaID, points in pairs(spawns) do
+                            local area = tonumber(areaID)
+                            local zoneName = area and TurnInZoneName(area)
+                            local uiMapID = zoneName and TurnInUiMapID(area)
+                            if uiMapID and uiMapID > 0 and type(points) == "table" then
+                                for _, point in ipairs(points) do
+                                    local x = type(point) == "table" and tonumber(point[1])
+                                    local y = type(point) == "table" and tonumber(point[2])
+                                    if x and y and x >= 0 and x <= 100 and y >= 0 and y <= 100 then
+                                        local wx, wy, placeInstance = toWorld(uiMapID, x, y)
+                                        if wx and wy and placeInstance then
+                                            foundAny = true
+                                            if placeInstance == instance then
+                                                local squared = (wx - px)^2 + (wy - py)^2
+                                                if not bestSquared or squared < bestSquared then
+                                                    bestSquared = squared
+                                                    best = name .. " — " .. zoneName
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if not foundAny then return nil end
+    end
+    -- Straight-line world distance on the same continent only; no route claims.
+    return best
+end
+
 -- Transient detail bubbles for items with three or more matching quests.
 -- The bag tooltip keeps its own mouse/owner handling; only observe the cursor.
 local turnInHoverRows = setmetatable({}, { __mode = "k" })
@@ -1849,6 +1957,13 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
         end
         tooltip:AddLine(nameLine)
+        if grouped == "faction" and #row.ids >= 2 then
+            local nearest = ClosestFactionTurnIn(row)
+            if nearest then
+                tooltip:AddLine(indent .. "|cffabb1b7Closest: |r|cffdecfb9"
+                    .. nearest .. "|r", 0.8, 0.8, 0.8, true)
+            end
+        end
         if row.turnIns and #row.turnIns > 0 then
             if crowded then
                 local line = SafeCall(tooltip.NumLines, tooltip)
