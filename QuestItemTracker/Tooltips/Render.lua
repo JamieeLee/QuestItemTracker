@@ -146,8 +146,9 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
     -- Native item text already has its own spacing. Adding a blank line here
     -- creates an exaggerated gap under the item name and on the pinned copy.
-    -- Muted brass header: distinct from the default blue item-type labels.
-    AddCapturedLine("|cffd4b476Quest Item Tracker Forever|r")
+    -- Weathered copper separates QITF branding from reagent blue, bag-count
+    -- green and the options panel's gold trim.
+    AddCapturedLine("|cffc88b73Quest Item Tracker Forever|r")
     if SettingEnabled("showIDs") then
         AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75, nil, false)
     end
@@ -378,7 +379,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
     if #repeatableQuests > 0 then
         -- Subdued lavender differentiates repeatables from crafting reagents.
-        AddCapturedLine("REPEATABLE QUESTS", 0.74, 0.61, 0.87)
+        AddCapturedLine("REPEATABLE QUESTS", 189 / 255, 156 / 255, 222 / 255)
         for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
     end
     if #lowLevelQuests > 0 then
