@@ -103,7 +103,7 @@ def create_package(root: Path, output: Path, version: str):
         if not path.is_relative_to(addon_dir.resolve()) or not path.is_file():
             raise ValueError(f"Missing or invalid .toc Lua module: {relative}")
         module_paths.append(path)
-    lua_source = "\\n".join(path.read_text(encoding="utf-8") for path in module_paths)
+    lua_source = "\n".join(path.read_text(encoding="utf-8") for path in module_paths)
     if "QIT_BADGE_TEXTURE" in lua_source:
         for name, size in (("QITForeverBadge.tga", 32), ("QITIcon.tga", 64),
                            ("StatusCircle.tga", 32)):
