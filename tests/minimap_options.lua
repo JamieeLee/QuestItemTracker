@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.5' end
+  if key=='Version' then return '0.7-beta.1' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -36,7 +36,7 @@ _G.GetQuestDifficultyColor=function(level)
   if level == 6 then return {r=0.55,g=0.55,b=0.55} end
   return {r=1,g=0.5,b=0}
 end
-_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone'})[id] end}
+_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone',[43000]='Single Turn-in Item'})[id] end}
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={RequireContract=function(v) return v==4 end}
 _G.QuestDB={
@@ -52,8 +52,24 @@ _G.QuestDB={
   specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
   objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
   requiredSourceItems=function() return nil end,
+  finishedBy=function(id)
+    if id>=1001 and id<=1005 then return {{3000+id-1000}} end
+    if id==821 then return {{2001}} end
+  end,
 }
-_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end end}
+_G.ItemDB={relatedQuests=function(id)
+  if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end
+  if id==43000 then return {821} end
+end}
+_G.C_Map={GetAreaInfo=function(area) return ({[12]='Elwynn Forest',[1637]='Orgrimmar',[1519]='Stormwind City'})[area] end}
+_G.NpcDB={
+  name=function(id)
+    if id==2001 then return 'Brewmaster Test' end
+    if id>=3001 and id<=3005 then return 'Quartermaster '..(id-3000) end
+  end,
+  zoneID=function(id) return id==2001 and 12 or 1637 end,
+  spawns=function(id) return {[id==2001 and 12 or 1637]={{42.5,67.2}}} end,
+}
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
   GetInfo=function() end,
@@ -116,6 +132,12 @@ local function MockFrame(kind,name,parent)
   function f:SetTexCoord() end
   function f:CreateTexture() return MockFrame('Texture',nil,self) end
   function f:CreateFontString() return MockFrame('FontString',nil,self) end
+  if kind=='GameTooltip' then
+    f.lines={}
+    function f:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor end
+    function f:AddLine(line) self.lines[#self.lines+1]=line end
+    function f:ClearLines() self.lines={} end
+  end
   frames[#frames+1]=f
   return f
 end
@@ -135,21 +157,28 @@ local typedHook
 _G.Enum={TooltipDataType={Item=222}}
 _G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
 _G.GameTooltip={lines={},scripts={}}
+function GameTooltip:GetLeft() return 200 end
+function GameTooltip:GetRight() return 520 end
+function GameTooltip:GetEffectiveScale() return 1 end
+function GameTooltip:IsShown() return self.shown end
+function UIParent:GetWidth() return 1200 end
 function GameTooltip:HookScript(event,fn) self.scripts[event]=fn end
-local function tooltipFontString(value)
-  return {text=value,height=14,
+local function tooltipFontString(value,index)
+  return {text=value,index=index,height=14,
     GetText=function(self)return self.text end,
     SetText=function(self,v)self.text=v end,
     GetHeight=function(self)return self.height end,
     SetHeight=function(self,v)self.height=v end,
+    GetTop=function(self)return 600-(self.index-1)*16 end,
+    GetBottom=function(self)return 586-(self.index-1)*16 end,
   }
 end
 function GameTooltip:GetName()return "GameTooltip" end
 function GameTooltip:NumLines()return #self.lines end
 function GameTooltip:AddLine(line)
   self.lines[#self.lines+1]=line
-  _G["GameTooltipTextLeft"..#self.lines]=tooltipFontString(line)
-  _G["GameTooltipTextRight"..#self.lines]=tooltipFontString("")
+  _G["GameTooltipTextLeft"..#self.lines]=tooltipFontString(line,#self.lines)
+  _G["GameTooltipTextRight"..#self.lines]=tooltipFontString("",#self.lines)
 end
 function GameTooltip:AddDoubleLine(left,right)
   self:AddLine(left)
@@ -328,7 +357,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.5' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.1' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -344,12 +373,14 @@ end
 assert(matchedIcon,'minimap button must use the approved QITF FOREVER badge')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
-assert(#checks==7,'expected seven settings switches')
+assert(#checks==9,'expected nine settings switches')
 assert(checks[1]:GetChecked(),'faction filter should be enabled by default')
 assert(not checks[7]:GetChecked(),'future labels must be hidden by default')
 assert(not checks[2]:GetChecked(),'other addon IDs must stay visible by default')
 assert(checks[3]:GetChecked()==false and checks[4]:GetChecked()==false,'QIT IDs must be off by default')
 assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown must be on by default')
+assert(checks[8]:GetChecked(),'turn-in name and zone should be on by default')
+assert(not checks[9]:GetChecked(),'turn-in coordinates must be off by default')
 
 -- Every setting explains its purpose when hovered, without technical jargon.
 -- The expanded hit area lets players hover (and click) on the label as well.
@@ -361,6 +392,8 @@ local expectedHelps={
   {'Show quest levels','Level 60'},
   {'Show bag / bank breakdown','bags and bank'},
   {'Show future quest labels','KEEP or NEEDED'},
+  {'Show turn-in NPC and zone','on by default'},
+  {'Show turn-in coordinates','Off by default'},
 }
 for i, expected in ipairs(expectedHelps) do
   local check=checks[i]
@@ -388,6 +421,50 @@ local function tooltip(id)
   typedHook(GameTooltip,{id=id,type=222})
   return table.concat(GameTooltip.lines,'\n')
 end
+-- One relevant quest should show a quiet inline location.
+local singleTurnIn=tooltip(43000)
+assert(singleTurnIn:find('Turn in:',1,true),'single quest should show inline turn-in')
+assert(singleTurnIn:find('Brewmaster Test — Elwynn Forest',1,true),
+  'single quest must show finisher name and zone')
+assert(not singleTurnIn:find('(42.5, 67.2)',1,true),
+  'turn-in coordinates should be off by default')
+checks[9]:SetChecked(true); checks[9].scripts.OnClick(checks[9])
+assert(tooltip(43000):find('(42.5, 67.2)',1,true),
+  'turn-in coordinates should appear when enabled')
+checks[9]:SetChecked(false); checks[9].scripts.OnClick(checks[9])
+checks[8]:SetChecked(false); checks[8].scripts.OnClick(checks[8])
+assert(not tooltip(43000):find('Turn in:',1,true),
+  'turn-in details toggle must hide name and zone')
+checks[8]:SetChecked(true); checks[8].scripts.OnClick(checks[8])
+
+-- Three or more quest associations: destinations live in a side bubble,
+-- not stacked on the item tooltip. The five donation quests stay grouped.
+local busy=tooltip(4894)
+assert(not busy:find('Turn in:',1,true),
+  'crowded item must not add inline turn-in lines')
+assert(busy:find('(5 quests)',1,true),'five faction quests should stay collapsed')
+local donationLine
+for index, line in ipairs(GameTooltip.lines) do
+  if line:find('A Donation of Wool',1,true) then donationLine=index; break end
+end
+assert(donationLine,'donation row missing from crowded tooltip')
+cursorX,cursorY=300,593-(donationLine-1)*16
+assert(type(GameTooltip.scripts.OnUpdate)=='function','turn-in hover updater not installed')
+GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+local bubble
+for _,f in ipairs(frames) do
+  if f.name=='QITTurnInHoverBubble' then bubble=f end
+end
+assert(bubble and bubble.shown,'hovering a crowded quest row must show a side bubble')
+local bubbleText=table.concat(bubble.lines,' ')
+for i=1,5 do
+  assert(bubbleText:find('Quartermaster '..i,1,true),
+    'collapsed faction row lost one of its turn-in locations')
+end
+cursorX,cursorY=100,500
+GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+assert(not bubble.shown,'side bubble must hide after leaving quest row')
+
 -- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
 local function withExternalIDs()
   GameTooltip:ClearLines()
