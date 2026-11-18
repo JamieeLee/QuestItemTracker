@@ -4,6 +4,13 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.2] - 2026-11-17
+
+- **Shift pins item context:** Holding Shift while hovering a quest item opens a persistent copy of QITF's information. Moving over quest text or another bag slot does not switch the pinned item; releasing Shift closes it. Row-hover bubbles on busy items still show the individual turn-in NPCs and cities.
+- **Optional closest faction turn-in:** When a compatible TomTom + read-only geographic position API is available, grouped faction donation quests can show one quiet `Closest: NPC — City` line. The calculation compares known QuestieDB finisher spawn positions on the player's current continent; incomplete or incomparable locations are omitted. No waypoint is created or changed.
+- **No new requirements:** Normal NPC/zone turn-in lines, grouping, and optional coordinate settings remain unchanged without navigation integration.
+- **Version increment:** Next tester carries `0.7-beta.2` in the TOC, in-game menu, changelog, and test artifact.
+
 ## [0.7-beta.1] - 2026-11-17
 
 - **Turn-in guidance (beta):** Show the known QuestieDB quest-finisher NPC/object and zone beneath a quest when the item matches one or two quests. For three or more matches, keep the main tooltip clean and expose turn-ins in a side bubble when hovering the quest row, with a Shift-hover fallback for bag UIs that dismiss the tooltip on mouse-leave. No waypoints, quest tracking, or guessed locations.

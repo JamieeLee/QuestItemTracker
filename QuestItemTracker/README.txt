@@ -30,6 +30,15 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.2 SHIFT LOCK + OPTIONAL GPS HINT
+- Hold Shift while hovering an item to pin QITF's information so you can move
+  onto quest names and get their turn-in bubble. Releasing Shift unpins it.
+- A compatible TomTom geographic-position API can optionally show the nearest
+  *known, comparable* faction turn-in NPC and city beneath grouped donations.
+  No GPS addon is required, and QITF never creates or changes waypoints.
+- If the location data is incomplete or on a different continent, omit the
+  nearest suggestion instead of guessing.
+
 V0.7 BETA TURN-IN DETAILS
 - When an item matches 1-2 quests, show the known quest finisher's name
   and zone below the quest. This is on by default.
@@ -40,7 +49,7 @@ V0.7 BETA TURN-IN DETAILS
 - If QuestieDB doesn't know the turn-in, QITF doesn't guess.
 - Grouped faction rows keep their compact (5 quests) label; the hover bubble
   lists distinct turn-in destinations rather than assigning one NPC to all.
-- Test build 0.7-beta.1. SavedVariables and existing filters are unchanged.
+- Development beta. Existing SavedVariables and filters are unchanged.
 
 TOOLTIP PREFERENCES
 Click the draggable minimap button, or type /qit options.
