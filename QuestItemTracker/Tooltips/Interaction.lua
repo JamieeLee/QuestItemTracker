@@ -188,7 +188,7 @@ end
 -- OnUpdate is not reliable when an inventory addon dismisses or replaces it.
 local function StartPinController()
     if pinController or type(CreateFrame) ~= "function" then return end
-    pinController = CreateFrame("Frame")
+    pinController = CreateFrame("Frame", "QITPinController")
     local elapsedTotal = 0
     pinController:SetScript("OnUpdate", function(_, elapsed)
         elapsedTotal = elapsedTotal + (tonumber(elapsed) or 0)
