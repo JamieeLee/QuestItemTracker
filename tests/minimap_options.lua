@@ -445,7 +445,7 @@ assert(not checks[6]:GetChecked(),'turn-in coordinates should be off by default'
 -- The expanded hit area lets players hover (and click) on the label as well.
 local expectedHelps={
   {'Only show my faction quests','other faction'},
-  {'Show IDs','technical identifiers'},
+  {'Show IDs','item and quest IDs'},
   {'Show quest levels','quest'},
   {'Show bag / bank breakdown','bags and bank'},
   {'Show turn-in NPC and zone','quest-finisher'},
