@@ -340,8 +340,11 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                     or ("Quest ID: " .. row.id)
                 statusLine = statusLine .. (status and "  |  " or "") .. idsText
             end
-            AddCapturedLine(statusLine, 0.78, 0.78, 0.78, nil,
-                showIDs and (status and (indent .. status) or false) or nil)
+            local withoutIDs
+            if showIDs then
+                withoutIDs = status and (indent .. status) or false
+            end
+            AddCapturedLine(statusLine, 0.78, 0.78, 0.78, nil, withoutIDs)
         end
 
         local entry = row.entry
