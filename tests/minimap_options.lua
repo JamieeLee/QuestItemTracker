@@ -563,10 +563,7 @@ _G.LibStub=nil
 -- Shift pins the original item information independently of the bag tooltip.
 local pinController
 for _, f in ipairs(frames) do
-  if f ~= main and f.kind == 'Frame' and f.scripts.OnUpdate
-    and not f.events.PLAYER_LOGIN then
-    pinController = f
-  end
+  if f.name == 'QITPinController' then pinController = f end
 end
 assert(pinController, 'independent pin controller must be installed')
 local beforePin=tooltip(4894)
