@@ -30,6 +30,14 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.9 NATIVE TOOLTIP SAFETY AND ID OWNERSHIP
+- QITF never resizes or rewrites another addon's item/spell tooltip text.
+- Known UI ID providers manage their own ID visibility. QITF disables
+  its Show IDs control with a "Handled by UI" note when one is detected.
+- Stock Forever still controls QITF's own optional item/quest IDs.
+- Pinning and quest-row mouse interactions remain independent.
+- Hearthstone clipping and custom-UI gap behavior need real-client checks.
+
 V0.7-BETA.8 PIN AND IDENTIFIER POLISH
 - The Show IDs checkbox supports WoW Forever's checked-state values.
 - Pinned quest information follows the same Show IDs setting as native
