@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.11] - 2026-11-18
+
+- **Release-candidate safety review:** Keep ordinary item and spell ID appends inside the existing protected tooltip callback boundary, so errors from forbidden/unusual tooltip frames do not escape into the client. The first error is reported once rather than repeated on every hover.
+- **CI release gate:** Require a version increase when any modular addon Lua file changes, not just the bootstrap Lua and .toc. This closes a gap where future source edits could merge without advancing the version.
+- **Regression tests:** Simulate native AddLine rejecting item and spell tooltip writes; assert both callbacks remain safe and errors are reported once.
+- **No visual/behavior changes intended:** Preserve beta.10's tested stock ID switch, custom UI handoff, copper/lavender palette, independent Shift pin, and native font ownership.
+- **Release guard:** Draft branch only, no merge or publish without explicit approval.
+
 ## [0.7-beta.10] - 2026-11-18
 
 - **Stock Forever Show IDs:** The existing Show IDs setting now also adds ordinary item IDs and spell IDs through standard typed tooltip callbacks, including items with no QITF quest associations. QITF retains its own quest IDs, uses no native font rewriting, and deduplicates rows on repeated tooltip callbacks.
