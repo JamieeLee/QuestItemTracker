@@ -30,6 +30,13 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.8 PIN AND IDENTIFIER POLISH
+- The Show IDs checkbox supports WoW Forever's checked-state values.
+- Pinned quest information follows the same Show IDs setting as native
+  item tooltips, even if a setting was changed after the source was captured.
+- Pinned panel uses a subtle aged-gold frame and the short label "Pinned".
+- The working Shift capture, release and quest-row bubble stay unchanged.
+
 V0.7-BETA.7 UI-INDEPENDENCE AUDIT
 - Standard tooltips remain under the active UI's ownership.
 - Technical ID lines collapse immediately and restore their native geometry
