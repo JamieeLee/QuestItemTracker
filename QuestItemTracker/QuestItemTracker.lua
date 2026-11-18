@@ -1812,7 +1812,7 @@ local function AddLocationDetailLine(tooltip, indent, label, place)
     local split = string.find(place, " — ", 1, true)
     local npc = split and string.sub(place, 1, split - 1)
     local zone = split and string.sub(place, split + #" — ")
-    if npc and zone and (#npc + #zone + #label + 2) > 36 then
+    if npc and zone and (#npc + #zone + #label + 2) >= 36 then
         tooltip:AddLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
             .. npc .. "|r", 0.8, 0.8, 0.8, true)
         tooltip:AddLine(indent .. "         |cffdecfb9"
