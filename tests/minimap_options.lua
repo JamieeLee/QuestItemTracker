@@ -670,6 +670,10 @@ local index=GameTooltip:NumLines()
 assert(_G['GameTooltipTextLeft'..index]:GetText()==''
   and _G['GameTooltipTextRight'..index]:GetHeight()==0,
   'spell/action tooltip ID row did not compact immediately')
+GameTooltip:Show() -- a skin may re-show to recalculate font layout
+assert(_G['GameTooltipTextLeft'..index]:GetHeight()==0
+  and _G['GameTooltipTextRight'..index]:GetText()=='',
+  're-show must not reopen technical ID rows or leave empty space')
 -- The client recycles the named FontStrings for Hearthstone. QITF must
 -- restore heights and never clip the actual item description.
 GameTooltip:ClearLines()
