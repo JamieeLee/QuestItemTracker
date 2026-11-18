@@ -61,7 +61,6 @@ local function HookTooltipFrame(tooltip)
         -- Check at most every 0.15 seconds, not every rendered frame.
         local rescanElapsed, hoverElapsed = 0, 0
         pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
-            if not S.pinnedInfo and SafeCall(IsShiftKeyDown) then PinCurrentItem(self) end
             if not S.pinnedInfo and S.turnInHoverRows[self] then
                 hoverElapsed = hoverElapsed + (tonumber(elapsed) or 0)
                 if hoverElapsed >= 0.05 then
