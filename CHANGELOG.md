@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.8] - 2026-11-18
+
+- **Forever Show IDs fix:** Checkbox handling accepts both 1/nil and true/false return values, persisting real booleans; legacy numeric settings are read safely.
+- **Unified pinned IDs:** The independent pinned panel follows the same Show IDs preference, including when it uses a QITF snapshot captured before the setting changed. Mixed status/ID lines retain status text, and quest-row hit targets retain correct indices.
+- **Pinned panel polish:** Rename the header from SHIFT PINNED to Pinned and add a quiet aged-gold frame border matching the QITF options style. No Blizzard-tooltip ownership changes.
+- **Tests:** Exercise the WoW Forever checkbox result shape, both ID toggle states on pinned information, snapshot reuse, grouped quest-row hover and border rendering.
+- **Still in draft:** Real-client verification is required for the Show IDs toggle, Hearthstone truncation, external-ID spacing and UI skin compatibility; no stable release or merge yet.
+
 ## [0.7-beta.7] - 2026-11-18
 
 - **UI-agnostic tooltip lifecycle:** Handle recognizable ItemID, IconID, SpellID and related technical rows immediately when standard tooltip lines are appended. Collapse the full row rather than making it transparent; restore original line height on clear, hide or reuse. Remove the timer that repeatedly hid ID text.
