@@ -8,6 +8,7 @@ local SafeCall = assert(api.SafeCall, "QIT load order: SafeCall")
 local AddonVersion = assert(api.AddonVersion, "QIT load order: AddonVersion")
 local QuestieDBReady = assert(api.QuestieDBReady, "QIT load order: QuestieDBReady")
 local SettingEnabled = assert(api.SettingEnabled, "QIT load order: SettingEnabled")
+local ExternalIDOwner = assert(api.ExternalIDOwner, "QIT load order: ExternalIDOwner")
 local DEFAULT_SETTINGS = assert(NS.defaults)
 
 local optionsPanel
@@ -228,9 +229,9 @@ local function CreateOptionsPanel()
         },
         {
             key = "showIDs", label = "Show IDs", y = -163,
-            help = "Show technical identifiers in item and quest tooltips. "
-                .. "When off, recognizable ID rows from UI addons are "
-                .. "collapsed. Also applies to pinned quest information.",
+            help = "Control item and quest IDs added by QITF. "
+                .. "Other UI addons own their identifier display. "
+                .. "When an ID provider is detected, use that UI's settings.",
         },
         {
             key = "showQuestLevels", label = "Show quest levels", y = -230,
@@ -266,6 +267,29 @@ local function CreateOptionsPanel()
         end
     end
     local checkboxes = {}
+    local idControl
+    local function RefreshIDControl()
+        if not idControl then return end
+        local control, label = idControl.frame, idControl.label
+        local owner = ExternalIDOwner()
+        if owner then
+            -- We never change another UI's SavedVariables or tooltip lines.
+            -- Save the player's QITF choice for when that UI is unloaded.
+            control:SetChecked(false)
+            if type(control.Disable) == "function" then control:Disable() end
+            label:SetText("Show IDs  (Handled by UI)")
+            if type(label.SetTextColor) == "function" then
+                label:SetTextColor(0.57, 0.55, 0.51, 1)
+            end
+        else
+            if type(control.Enable) == "function" then control:Enable() end
+            control:SetChecked(SettingEnabled("showIDs"))
+            label:SetText("Show IDs")
+            if type(label.SetTextColor) == "function" then
+                label:SetTextColor(1, 1, 1, 1)
+            end
+        end
+    end
     for i, entry in ipairs(entries) do
         local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         checkbox:SetSize(25, 25)
@@ -295,13 +319,21 @@ local function CreateOptionsPanel()
         label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
         label:SetText(entry.label)
         checkbox:SetScript("OnClick", function(self)
+            if entry.key == "showIDs" and ExternalIDOwner() then
+                RefreshIDControl()
+                return
+            end
             -- Forever's checkbox API may return 1/nil instead of true/false.
             -- Treat zero, nil and false as off; persist an actual boolean.
             local checked = self:GetChecked()
             S.DB.settings[entry.key] = checked ~= nil and checked ~= false and checked ~= 0
         end)
         checkboxes[#checkboxes + 1] = { frame = checkbox, key = entry.key }
+        if entry.key == "showIDs" then
+            idControl = { frame = checkbox, label = label }
+        end
     end
+    RefreshIDControl()
 
     local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     reset:SetSize(125, 24)
@@ -314,6 +346,7 @@ local function CreateOptionsPanel()
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
+        RefreshIDControl()
     end)
 
     local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -327,6 +360,7 @@ local function CreateOptionsPanel()
         for _, row in ipairs(checkboxes) do
             row.frame:SetChecked(SettingEnabled(row.key))
         end
+        RefreshIDControl()
     end)
     panel:Hide()
     optionsPanel = panel
