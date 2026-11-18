@@ -1757,7 +1757,8 @@ local function PinCurrentItem(tooltip)
     if not frame then return end
     frame:Hide()
     frame:ClearLines()
-    frame:AddLine("|cffffdfa0" .. (GetItemName(id) or ("Item " .. id)) .. "|r")
+    frame:AddLine("|cffffdfa0" .. (GetItemName(id) or ("Item " .. id))
+        .. "|r  |cff8aaac5SHIFT PINNED|r")
     local added = 0
     for index = start + 1, count do
         local label = _G[sourceName .. "TextLeft" .. index]
@@ -1769,6 +1770,10 @@ local function PinCurrentItem(tooltip)
         end
     end
     if added == 0 then return end
+    -- The copy must size independently of the narrow native bag tooltip.
+    if type(frame.SetMinimumWidth) == "function" then
+        frame:SetMinimumWidth(300)
+    end
     frame:ClearAllPoints()
     local left, top = SafeCall(tooltip.GetLeft, tooltip), SafeCall(tooltip.GetTop, tooltip)
     if left and top then
@@ -1791,14 +1796,8 @@ local function PinCurrentItem(tooltip)
         turnInHoverRows[frame] = copied
     end
     pinnedInfo = {frame = frame, itemID = id}
-    frame:SetScript("OnUpdate", function(self)
-        if not pinnedInfo or pinnedInfo.frame ~= self then return end
-        if not SafeCall(IsShiftKeyDown) then
-            ReleasePinnedItem()
-        else
-            UpdateTurnInHover(self)
-        end
-    end)
+    -- An independent controller owns pin lifetime. GameTooltipTemplate's
+    -- OnUpdate may not fire consistently with custom Forever bag UIs.
     frame:Show()
 end
 
@@ -2044,8 +2043,21 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 elseif #row.turnIns > 2 then
                     place = place .. " (+" .. (#row.turnIns - 1) .. " other locations)"
                 end
-                tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
-                    .. place .. "|r", 0.8, 0.8, 0.8, true)
+                -- WoW can ellipsize a narrow tooltip row before wrapping.
+                -- Split long destinations deliberately at the NPC / zone
+                -- boundary; no names or cities are shortened.
+                local split = string.find(place, " — ", 1, true)
+                local npc = split and string.sub(place, 1, split - 1)
+                local zone = split and string.sub(place, split + #" — ")
+                if npc and zone and (#npc + #zone + 10) > 32 then
+                    tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
+                        .. npc .. "|r", 0.8, 0.8, 0.8, true)
+                    tooltip:AddLine(indent .. "         |cffdecfb9"
+                        .. zone .. "|r", 0.8, 0.8, 0.8, true)
+                else
+                    tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
+                        .. place .. "|r", 0.8, 0.8, 0.8, true)
+                end
             end
         end
 
@@ -2138,6 +2150,11 @@ local function RunTooltipHook(tooltip, data, explicitItemID)
     -- Most bag addons place ID rows before the QIT section. Handle them even
     -- when the item has no quest associations and QIT adds no lines.
     SuppressExternalTooltipIDs(tooltip)
+    -- If Shift was already held as the player hovered the item, pin on the
+    -- same callback: some bag UIs dismiss their item tooltip immediately.
+    if ok and not pinnedInfo and SafeCall(IsShiftKeyDown) then
+        PinCurrentItem(tooltip)
+    end
     if not ok and not tooltipErrorReported then
         tooltipErrorReported = true
         Print("Tooltip error (first occurrence): " .. tostring(err))
@@ -2175,7 +2192,6 @@ local function HookTooltipFrame(tooltip)
         -- Check at most every 0.15 seconds, not every rendered frame.
         local rescanElapsed, hoverElapsed = 0, 0
         pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
-            if pinnedInfo and not SafeCall(IsShiftKeyDown) then ReleasePinnedItem() end
             if not pinnedInfo and SafeCall(IsShiftKeyDown) then PinCurrentItem(self) end
             if not pinnedInfo and turnInHoverRows[self] then
                 hoverElapsed = hoverElapsed + (tonumber(elapsed) or 0)
@@ -2458,7 +2474,33 @@ SlashCmdList.QUESTITEMTRACKER = function(message)
     end
 end
 
+-- Independent from any tooltip's OnUpdate or hide behavior: custom bag
+-- addons may replace their tooltip frame while Shift remains held.
+local pinWatchElapsed = 0
 local frame = CreateFrame("Frame")
+frame:SetScript("OnUpdate", function(_, elapsed)
+    pinWatchElapsed = pinWatchElapsed + (tonumber(elapsed) or 0)
+    if pinWatchElapsed < 0.05 then return end
+    pinWatchElapsed = 0
+    if pinnedInfo then
+        if not SafeCall(IsShiftKeyDown) then
+            ReleasePinnedItem()
+        else
+            UpdateTurnInHover(pinnedInfo.frame)
+        end
+        return
+    end
+    if not SafeCall(IsShiftKeyDown) then return end
+    local source = GameTooltip
+    if source and decoratedTooltips[source] and qitStartLines[source]
+        and (type(source.IsShown) ~= "function" or source:IsShown()) then
+        PinCurrentItem(source)
+    elseif ItemRefTooltip and decoratedTooltips[ItemRefTooltip]
+        and qitStartLines[ItemRefTooltip]
+        and (type(ItemRefTooltip.IsShown) ~= "function" or ItemRefTooltip:IsShown()) then
+        PinCurrentItem(ItemRefTooltip)
+    end
+end)
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("QUEST_ACCEPTED")
