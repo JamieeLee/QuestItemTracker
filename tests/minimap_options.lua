@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.10' end
+  if key=='Version' then return '0.7-beta.11' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -422,7 +422,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.10' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.11' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -861,6 +861,23 @@ typedHooks[333](GameTooltip,{id=3044,type=333})
 typedHooks[333](GameTooltip,{id=3044,type=333})
 assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot\nSpell ID: 3044',
   'Show IDs on must add exactly one native spell ID without altering spell text')
+-- A protected/forbidden native tooltip may reject AddLine. The item and
+-- spell typed callbacks must contain that failure instead of throwing into WoW.
+local originalAddLine=GameTooltip.AddLine
+local originalChat=DEFAULT_CHAT_FRAME.AddMessage
+local tooltipErrors={}
+DEFAULT_CHAT_FRAME.AddMessage=function(_,message)
+  tooltipErrors[#tooltipErrors+1]=message
+end
+GameTooltip:ClearLines()
+GameTooltip.AddLine=function() error('mock protected tooltip line') end
+local itemSafe=pcall(typedHook,GameTooltip,{id=6948,type=222})
+local spellSafe=pcall(typedHooks[333],GameTooltip,{id=3044,type=333})
+GameTooltip.AddLine=originalAddLine
+DEFAULT_CHAT_FRAME.AddMessage=originalChat
+assert(itemSafe and spellSafe,'native ID callback errors must never escape into the UI')
+assert(#tooltipErrors==1 and tooltipErrors[1]:find('Tooltip error',1,true),
+  'native tooltip errors should be reported only once')
 for _,i in ipairs({3,4}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
 end
