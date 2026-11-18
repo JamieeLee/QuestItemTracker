@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.6' end
+  if key=='Version' then return '0.7-beta.7' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -404,7 +404,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.6' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.7' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -462,6 +462,7 @@ local function tooltip(id)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then GameTooltip.scripts.OnTooltipCleared(GameTooltip) end
   typedHook(GameTooltip,{id=id,type=222})
+  GameTooltip:Show() -- the WoW UI, not QITF, owns visibility
   return table.concat(GameTooltip.lines,'\n')
 end
 -- One relevant quest should show a quiet inline location.
@@ -522,7 +523,7 @@ for _,f in ipairs(frames) do
   if f.name=='QITTurnInHoverBubble' then bubble=f end
 end
 assert(bubble and bubble.shown,'hovering a crowded quest row must show a side bubble')
-local bubbleText=table.concat(bubble.lines,' ')
+local bubbleText=table.concat(bubble.qitLines,' ')
 for i=1,5 do
   assert(bubbleText:find('Quartermaster '..i,1,true),
     'collapsed faction row lost one of its turn-in locations')
@@ -587,9 +588,10 @@ assert(pinPoint and pinPoint[2]==UIParent
     'pin must anchor independently alongside the source tooltip')
 assert(pinPoint[4]~=200,
     'pin must not overlap the original tooltip')
-assert(pinned.lines[1]:find('SHIFT PINNED',1,true),
+assert(pinned.kind=='Frame', 'pin must be a plain independent Frame, not GameTooltip')
+assert(pinned.qitLines[1]:find('SHIFT PINNED',1,true),
    'pinned panel should make the active Shift lock visible')
-local snapshot=table.concat(pinned.lines,'\n')
+local snapshot=table.concat(pinned.qitLines,'\n')
 assert(snapshot:find('A Donation of Wool',1,true)
   and snapshot:find('(5 quests)',1,true),
   'pinned panel must preserve the original grouped quest information')
@@ -597,20 +599,25 @@ assert(snapshot:find('A Donation of Wool',1,true)
 GameTooltip:Hide()
 if GameTooltip.scripts.OnHide then GameTooltip.scripts.OnHide(GameTooltip) end
 tooltip(43000)
-assert(pinned:IsShown() and table.concat(pinned.lines,'\n')==snapshot,
+assert(pinned:IsShown() and table.concat(pinned.qitLines,'\n')==snapshot,
   'moving to another bag item must not replace the Shift-pinned item')
-local pinnedDonation
-for index,line in ipairs(pinned.lines) do
-  if line:find('A Donation of Wool',1,true) then pinnedDonation=index;break end
+local pinnedQuestRow
+for _, f in ipairs(frames) do
+  if f.parent==pinned and f.scripts.OnEnter then
+    pinnedQuestRow=f
+    break
+  end
 end
-assert(pinnedDonation,'pinned copy has no hoverable quest row')
-cursorX,cursorY=300,593-(pinnedDonation-1)*16
-pinController.scripts.OnUpdate(pinController,0.2)
-assert(bubble.shown,'hovering grouped quest in pinned panel must show bubble')
-local pinnedDetail=table.concat(bubble.lines,' ')
+assert(pinnedQuestRow and pinnedQuestRow.mouseEnabled==true,
+  'pinned quest row must be a separate interactive hit target')
+pinnedQuestRow.scripts.OnEnter(pinnedQuestRow)
+assert(bubble.shown,'hovering pinned quest row must show destination bubble')
+local pinnedDetail=table.concat(bubble.qitLines,' ')
 assert(pinnedDetail:find('Quartermaster 1',1,true)
    and pinnedDetail:find('Quartermaster 5',1,true),
-   'pinned grouped hover bubble lost individual turn-in destinations')
+   'pinned grouped hover lost individual turn-in destinations')
+pinnedQuestRow.scripts.OnLeave(pinnedQuestRow)
+assert(not bubble.shown,'leaving pinned quest row must close bubble')
 shiftDown=false
 pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown() and not bubble.shown,
@@ -635,8 +642,9 @@ pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown(),'release after immediate pin must work')
 GameTooltip.scripts.OnUpdate=oldTooltipUpdate
 
--- One ID setting controls standard item tooltip IDs without editing the
--- reused FontStrings' text, height or width.
+-- One ID setting handles all recognizable technical ID rows, including
+-- IDs appended by another UI AFTER the source tooltip is already shown.
+-- Collapse synchronously, restore heights on reuse, never touch prose.
 local function withExternalIDs(itemID)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then
@@ -645,16 +653,25 @@ local function withExternalIDs(itemID)
   GameTooltip:AddDoubleLine('ItemID', tostring(itemID))
   GameTooltip:AddDoubleLine('IconID', '132919')
   typedHook(GameTooltip,{id=itemID,type=222})
+  GameTooltip:Show()
   return _G.GameTooltipTextLeft1,_G.GameTooltipTextRight1,
          _G.GameTooltipTextLeft2,_G.GameTooltipTextRight2
 end
 local a,b,c,d=withExternalIDs(4894)
-assert(a:GetText()=='ItemID' and b:GetText()=='4894'
-  and c:GetText()=='IconID' and d:GetText()=='132919',
-  'native ID text must never be modified')
-assert(a:GetAlpha()==0 and c:GetAlpha()==0,'Show IDs off should conceal technical IDs')
-assert(a:GetHeight()==14 and c:GetHeight()==14,'technical ID height must remain intact')
-
+assert(a:GetText()=='' and b:GetText()=='' and c:GetText()=='' and d:GetText()=='',
+  'ID rows must be visually absent when Show IDs is off')
+assert(a:GetHeight()==0 and b:GetHeight()==0 and c:GetHeight()==0 and d:GetHeight()==0,
+  'hidden ID rows must not occupy vertical space')
+-- Another UI can add IDs and Show() again while the item tooltip is open:
+-- hide immediately, without waiting for an OnUpdate rescan or drawing a flash.
+GameTooltip:Show()
+GameTooltip:AddDoubleLine('SpellID','20484')
+local index=GameTooltip:NumLines()
+assert(_G['GameTooltipTextLeft'..index]:GetText()==''
+  and _G['GameTooltipTextRight'..index]:GetHeight()==0,
+  'spell/action tooltip ID row did not compact immediately')
+-- The client recycles the named FontStrings for Hearthstone. QITF must
+-- restore heights and never clip the actual item description.
 GameTooltip:ClearLines()
 if GameTooltip.scripts.OnTooltipCleared then
   GameTooltip.scripts.OnTooltipCleared(GameTooltip)
@@ -663,17 +680,21 @@ GameTooltip:AddLine('Hearthstone')
 GameTooltip:AddLine('Use: Returns you to The Crossroads.')
 GameTooltip:AddDoubleLine('ItemID','6948')
 typedHook(GameTooltip,{id=6948,type=222})
+GameTooltip:Show()
 assert(_G.GameTooltipTextLeft2:GetText()=='Use: Returns you to The Crossroads.',
-  'QITF must not alter Hearthstone description text')
+  'QITF must never alter the Hearthstone description')
 assert(_G.GameTooltipTextLeft2:GetHeight()==14,
-  'QITF must not alter Hearthstone description height')
-assert(_G.GameTooltipTextLeft3:GetAlpha()==0,
-  'ordinary item ID row should honor Show IDs off')
+  'Hearthstone description height must stay intact after an ID reset')
+assert(_G.GameTooltipTextLeft3:GetText()=='' and _G.GameTooltipTextLeft3:GetHeight()==0,
+  'ordinary item ID row should be fully collapsed, not transparent')
 
 checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
 a,b,c,d=withExternalIDs(4894)
-assert(a:GetAlpha()==1 and c:GetAlpha()==1,
-  'Show IDs on must allow ID rows provided by any UI')
+assert(a:GetText()=='ItemID' and b:GetText()=='4894'
+  and c:GetText()=='IconID' and d:GetText()=='132919',
+  'Show IDs on must preserve external UI text')
+assert(a:GetHeight()==14 and c:GetHeight()==14,
+  'Show IDs on must preserve native row height')
 local ownIDs=table.concat(GameTooltip.lines,'\n')
 assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID did not follow unified option')
 assert(ownIDs:find('Quest ID: 821',1,true),'quest ID did not follow unified option')
