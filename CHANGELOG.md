@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.9] - 2026-11-18
+
+- **Stop modifying shared tooltip fonts:** Remove QITF's external ID interception entirely. QITF no longer clears another addon's `ItemID`, `IconID`, or `SpellID` rows or alters native tooltip FontString text, height, width or alpha. This addresses the source of clipped/truncated Hearthstone and spell tooltips and remaining ID gaps; verify the actual in-game result before claiming a fix.
+- **Let a UI own its own identifiers:** Recognize EllesmereUI's publicly exposed ID-handling capability. When detected, QITF suppresses only its **own** item/quest ID additions, greys out `Show IDs` in QITF options, and labels it `Handled by UI`. The external UI continues to control all ID visibility; the user's QITF preference remains saved for stock WoW.
+- **Stock WoW compatibility:** Without a known external ID provider, QITF's Show IDs option still controls the item and quest IDs added by QITF itself. No third-party font strings are touched.
+- **Regression harness:** Simulate reused native FontStrings and assert that ordinary Hearthstone/SpellID text and line heights are untouched. Verify provider on/off handoff, disabled UI option, saved settings and that Shift pin remains independent.
+- **Safety:** Draft beta only. Game-client validation still required; do not merge to main or publish.
+
 ## [0.7-beta.8] - 2026-11-18
 
 - **Forever Show IDs fix:** Checkbox handling accepts both 1/nil and true/false return values, persisting real booleans; legacy numeric settings are read safely.
