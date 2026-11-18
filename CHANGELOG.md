@@ -4,6 +4,13 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.3] - 2026-11-17
+
+- **Shift pin reliability:** Move Shift-pinned information management onto an independent always-active controller; do not rely on the bag tooltip's own OnUpdate script or a pinned GameTooltip's OnUpdate. Capture immediately if Shift is already held during an item hover, and release the saved panel when Shift is lifted.
+- **Readability for long NPC/zone names:** Wrap lengthy turn-in destinations at the NPC / zone boundary so a full zone like The Barrens displays on its own line rather than truncating to an ellipsis.
+- **Pinned visual feedback:** Show a subdued SHIFT PINNED indicator on the separate QITF panel. Keep the core tooltip unchanged unless the player holds Shift.
+- **Beta test revision:** `0.7-beta.3`; retains optional read-only navigation integration, turn-in settings, quest grouping and faction filtering.
+
 ## [0.7-beta.2] - 2026-11-17
 
 - **Shift pins item context:** Holding Shift while hovering a quest item opens a persistent copy of QITF's information. Moving over quest text or another bag slot does not switch the pinned item; releasing Shift closes it. Row-hover bubbles on busy items still show the individual turn-in NPCs and cities.

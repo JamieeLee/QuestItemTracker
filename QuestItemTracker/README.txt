@@ -30,6 +30,14 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.3 PIN FIX + CLEAN TURN-IN WRAPPING
+- The Shift lock now uses its own update controller, independent of bag
+  tooltip repaint/hide behavior. Holding Shift shows a clearly marked pinned
+  information panel; release Shift to close it.
+- Long quest-finisher destinations break after the NPC name and show the
+  complete zone on the next line. The Barrens is no longer shortened.
+- The rest of the existing turn-in, grouping and navigation behavior remains.
+
 V0.7-BETA.2 SHIFT LOCK + OPTIONAL GPS HINT
 - Hold Shift while hovering an item to pin QITF's information so you can move
   onto quest names and get their turn-in bubble. Releasing Shift unpins it.
