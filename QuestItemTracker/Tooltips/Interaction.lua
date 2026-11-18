@@ -5,6 +5,7 @@ local S = assert(NS.state)
 local api = assert(NS.api)
 local SafeCall = assert(api.SafeCall)
 local GetItemName = assert(api.GetItemName)
+local SettingEnabled = assert(api.SettingEnabled)
 local NewInfoPanel = assert(api.NewInfoPanel)
 
 -- Native GameTooltip rows may have destinations; the pinned QITF panel has
@@ -123,13 +124,31 @@ local function PinCurrentItem(tooltip)
     frame:Hide()
     local content = {
         { text = "|cffffdfa0" .. GetItemName(capture.itemID)
-            .. "|r  |cff8aaac5SHIFT PINNED|r" },
+            .. "|r  |cffd4b476Pinned|r" },
     }
-    for _, line in ipairs(capture.lines) do content[#content + 1] = line end
+    local showIDs = SettingEnabled("showIDs")
+    local displayedLine = {}
+    for index, line in ipairs(capture.lines) do
+        local text = line.text
+        if not showIDs then
+            if line.withoutIDs == false then
+                text = nil
+            elseif type(line.withoutIDs) == "string" then
+                text = line.withoutIDs
+            end
+        end
+        if text then
+            -- Do not modify the captured tooltip text or its saved geometry.
+            content[#content + 1] = {
+                text = text, r = line.r, g = line.g, b = line.b, wrap = line.wrap,
+            }
+            displayedLine[index] = #content
+        end
+    end
     local hoverTargets = {}
     for _, row in ipairs(capture.hoverRows or {}) do
-        if row.captureLine then
-            hoverTargets[row.captureLine + 1] = row
+        if row.captureLine and displayedLine[row.captureLine] then
+            hoverTargets[displayedLine[row.captureLine]] = row
         end
     end
     pinnedPanel:Render(content, hoverTargets,
