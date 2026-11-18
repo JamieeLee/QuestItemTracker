@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.8' end
+  if key=='Version' then return '0.7-beta.9' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -135,6 +135,9 @@ local function MockFrame(kind,name,parent)
   function f:IsShown() return self.shown end
   function f:SetChecked(v) self.checked=v end
   function f:GetChecked() return self.checked end
+  function f:Disable() self.disabled=true end
+  function f:Enable() self.disabled=false end
+  function f:IsEnabled() return not self.disabled end
   function f:SetText(v) self.text=v end
   function f:SetSize(w,h) self.w=w; self.h=h end
   function f:SetHitRectInsets(...) self.hitInsets={...} end
@@ -208,12 +211,13 @@ function GameTooltip:IsShown() return self.shown end
 function UIParent:GetWidth() return 1200 end
 function UIParent:GetEffectiveScale() return 1 end
 function GameTooltip:HookScript(event,fn) self.scripts[event]=fn end
+local nativeHeightChanges=0
 local function tooltipFontString(value,index)
   return {text=value,index=index,height=14,
     GetText=function(self)return self.text end,
     SetText=function(self,v)self.text=v end,
     GetHeight=function(self)return self.height end,
-    SetHeight=function(self,v)self.height=v end,
+    SetHeight=function(self,v)nativeHeightChanges=nativeHeightChanges+1;self.height=v end,
     GetAlpha=function(self)return self.alpha or 1 end,
     SetAlpha=function(self,v)self.alpha=v end,
     GetTop=function(self)return 600-(self.index-1)*16 end,
@@ -224,8 +228,17 @@ function GameTooltip:GetName()return "GameTooltip" end
 function GameTooltip:NumLines()return #self.lines end
 function GameTooltip:AddLine(line)
   self.lines[#self.lines+1]=line
-  _G["GameTooltipTextLeft"..#self.lines]=tooltipFontString(line,#self.lines)
-  _G["GameTooltipTextRight"..#self.lines]=tooltipFontString("",#self.lines)
+  local index=#self.lines
+  -- Reuse named FontStrings, as WoW Forever does when a tooltip changes
+  -- from an ID-heavy item to a regular spell or Hearthstone.
+  local left=_G["GameTooltipTextLeft"..index]
+  local right=_G["GameTooltipTextRight"..index]
+  if left then left:SetText(line) else
+    _G["GameTooltipTextLeft"..index]=tooltipFontString(line,index)
+  end
+  if right then right:SetText("") else
+    _G["GameTooltipTextRight"..index]=tooltipFontString("",index)
+  end
 end
 function GameTooltip:AddDoubleLine(left,right)
   self:AddLine(left)
@@ -404,7 +417,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.8' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.9' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -676,9 +689,9 @@ assert(not pinned:IsShown(),'release after immediate pin must work')
 checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
 GameTooltip.scripts.OnUpdate=oldTooltipUpdate
 
--- One ID setting handles all recognizable technical ID rows, including
--- IDs appended by another UI AFTER the source tooltip is already shown.
--- Collapse synchronously, restore heights on reuse, never touch prose.
+-- The active UI owns any technical-ID rows that it adds. QITF's
+-- standard hooks must NEVER mutate its named tooltip FontStrings.
+-- Verify text, height and reuse without requiring an external provider.
 local function withExternalIDs(itemID)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then
@@ -691,25 +704,21 @@ local function withExternalIDs(itemID)
   return _G.GameTooltipTextLeft1,_G.GameTooltipTextRight1,
          _G.GameTooltipTextLeft2,_G.GameTooltipTextRight2
 end
+local beforeNativeHeight=nativeHeightChanges
 local a,b,c,d=withExternalIDs(4894)
-assert(a:GetText()=='' and b:GetText()=='' and c:GetText()=='' and d:GetText()=='',
-  'ID rows must be visually absent when Show IDs is off')
-assert(a:GetHeight()==0 and b:GetHeight()==0 and c:GetHeight()==0 and d:GetHeight()==0,
-  'hidden ID rows must not occupy vertical space')
--- Another UI can add IDs and Show() again while the item tooltip is open:
--- hide immediately, without waiting for an OnUpdate rescan or drawing a flash.
+assert(a:GetText()=='ItemID' and b:GetText()=='4894'
+  and c:GetText()=='IconID' and d:GetText()=='132919',
+  'QITF must not edit identifier rows owned by another UI')
+assert(a:GetHeight()==14 and b:GetHeight()==14
+  and c:GetHeight()==14 and d:GetHeight()==14,
+  'external ID fontstrings must retain native height')
 GameTooltip:Show()
 GameTooltip:AddDoubleLine('SpellID','20484')
 local index=GameTooltip:NumLines()
-assert(_G['GameTooltipTextLeft'..index]:GetText()==''
-  and _G['GameTooltipTextRight'..index]:GetHeight()==0,
-  'spell/action tooltip ID row did not compact immediately')
-GameTooltip:Show() -- a skin may re-show to recalculate font layout
-assert(_G['GameTooltipTextLeft'..index]:GetHeight()==0
-  and _G['GameTooltipTextRight'..index]:GetText()=='',
-  're-show must not reopen technical ID rows or leave empty space')
--- The client recycles the named FontStrings for Hearthstone. QITF must
--- restore heights and never clip the actual item description.
+assert(_G['GameTooltipTextLeft'..index]:GetText()=='SpellID'
+  and _G['GameTooltipTextRight'..index]:GetText()=='20484',
+  'QITF must not rewrite spell/action tooltip IDs')
+-- Recycle the very same named fontstrings for ordinary prose.
 GameTooltip:ClearLines()
 if GameTooltip.scripts.OnTooltipCleared then
   GameTooltip.scripts.OnTooltipCleared(GameTooltip)
@@ -719,24 +728,58 @@ GameTooltip:AddLine('Use: Returns you to The Crossroads.')
 GameTooltip:AddDoubleLine('ItemID','6948')
 typedHook(GameTooltip,{id=6948,type=222})
 GameTooltip:Show()
-assert(_G.GameTooltipTextLeft2:GetText()=='Use: Returns you to The Crossroads.',
-  'QITF must never alter the Hearthstone description')
-assert(_G.GameTooltipTextLeft2:GetHeight()==14,
-  'Hearthstone description height must stay intact after an ID reset')
-assert(_G.GameTooltipTextLeft3:GetText()=='' and _G.GameTooltipTextLeft3:GetHeight()==0,
-  'ordinary item ID row should be fully collapsed, not transparent')
+assert(_G.GameTooltipTextLeft2:GetText()=='Use: Returns you to The Crossroads.'
+  and _G.GameTooltipTextLeft2:GetHeight()==14,
+  'reused Hearthstone description must remain untouched and full-height')
+assert(_G.GameTooltipTextLeft3:GetText()=='ItemID'
+  and _G.GameTooltipTextRight3:GetText()=='6948',
+  'QITF must not erase external item identifiers')
+assert(nativeHeightChanges==beforeNativeHeight,
+  'QITF must not call SetHeight on shared tooltip FontStrings')
 
 checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
 a,b,c,d=withExternalIDs(4894)
 assert(a:GetText()=='ItemID' and b:GetText()=='4894'
   and c:GetText()=='IconID' and d:GetText()=='132919',
-  'Show IDs on must preserve external UI text')
+  'showing QITF IDs must not alter external identifiers')
 assert(a:GetHeight()==14 and c:GetHeight()==14,
-  'Show IDs on must preserve native row height')
+  'showing QITF IDs must not alter native font height')
 local ownIDs=table.concat(GameTooltip.lines,'\n')
 assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID did not follow unified option')
 assert(ownIDs:find('Quest ID: 821',1,true),'quest ID did not follow unified option')
 checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
+-- The UI-provider contract: an exposed ID-handling capability gets the
+-- entire ID presentation, QITF's option is disabled, and no native tooltip
+-- line is edited. Removing that UI restores the player's saved QITF choice.
+_G.EllesmereUI = {SpellIDOn=function() return true end}
+panel:Hide();panel:Show()
+assert(checks[2]:IsEnabled()==false and not checks[2]:GetChecked(),
+  'external ID provider must disable and uncheck QITF Show IDs')
+local handledLabel
+for _, f in ipairs(frames) do
+  if f.kind=='FontString' and f.parent==panel
+     and f.text and f.text:find('Handled by UI',1,true) then
+    handledLabel=f;break
+  end
+end
+assert(handledLabel,'external ID provider must be indicated as Handled by UI')
+checks[2]:SetChecked(true)
+checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==false,
+  'a disabled Show IDs checkbox must not change saved preferences')
+local externalBefore=nativeHeightChanges
+local externalLines=withExternalIDs(4894)
+local qitExternal=table.concat(GameTooltip.lines,'\n')
+assert(not qitExternal:find('Item ID: 4894',1,true)
+  and not qitExternal:find('Quest ID: 821',1,true),
+  'QITF must not add duplicate IDs while a UI provider owns ID display')
+assert(nativeHeightChanges==externalBefore
+  and _G.GameTooltipTextLeft1:GetText()=='ItemID',
+  'an external ID provider must retain its untouched tooltip rows')
+_G.EllesmereUI=nil
+panel:Hide();panel:Show()
+assert(checks[2]:IsEnabled()==true and not checks[2]:GetChecked(),
+  'stock UI must restore working QITF ID switch and saved state')
 -- This toggle changes only tooltip presentation, never quest-matching logic.
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
