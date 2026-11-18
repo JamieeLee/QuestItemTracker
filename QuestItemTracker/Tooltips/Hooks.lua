@@ -73,7 +73,7 @@ local function HookTooltipFrame(tooltip)
                 S.decoratedTooltips[self] = nil
                 S.qitCaptures[self] = nil
                 ClearTurnInHover(self)
-                end)
+            end)
         end
         if type(tooltip.SetBagItem) == "function" then
             local ok = pcall(hooksecurefunc, tooltip, "SetBagItem", function(self, bag, slot)
