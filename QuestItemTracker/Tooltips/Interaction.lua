@@ -31,6 +31,9 @@ local function ShowTurnInBubble(tooltip, row)
             and type(bubble.AddLine) == "function"
             and type(bubble.ClearLines) == "function" then
             bubble:SetOwner(UIParent, "ANCHOR_NONE")
+            if type(bubble.EnableMouse) == "function" then
+                bubble:EnableMouse(false)
+            end
             bubble:Hide()
             turnInBubble = bubble
         end
@@ -95,8 +98,11 @@ end
 S.qitCaptures = setmetatable({}, { __mode = "k" })
 S.pinnedInfo = nil
 local pinnedFrame, pinController
-local pinAttempts, shiftSamples = 0, 0
+local pinAttempts, pinSuccesses, shiftSamples = 0, 0, 0
 local lastPinResult = "No pin attempt recorded"
+local lastRelease = "Not pinned yet"
+local lastPosition = "Not positioned"
+local lastPinVisible = false
 local lastCandidateID
 
 local function ShiftHeld()
@@ -104,9 +110,10 @@ local function ShiftHeld()
     return down == true or down == 1
 end
 
-local function ReleasePinnedItem()
+local function ReleasePinnedItem(reason)
     local pinned = S.pinnedInfo
     if not pinned then return end
+    lastRelease = tostring(reason or "released") .. " (item " .. tostring(pinned.itemID) .. ")"
     S.pinnedInfo = nil
     ClearTurnInHover(pinned.frame)
     pinned.frame:Hide()
@@ -114,13 +121,14 @@ end
 
 local function PinCurrentItem(tooltip)
     if S.pinnedInfo or not ShiftHeld() then return end
-    pinAttempts = pinAttempts + 1
     local capture = tooltip and S.qitCaptures[tooltip]
+    -- A normal item has no QITF capture. Polling Shift must not count every
+    -- OnUpdate as a failed pin, which previously produced hundreds of attempts.
     if not capture or type(capture.lines) ~= "table" or #capture.lines == 0 then
-        lastPinResult = "No QITF information captured for this tooltip"
         return
     end
     lastCandidateID = capture.itemID
+    pinAttempts = pinAttempts + 1
 
     if not pinnedFrame and type(CreateFrame) == "function" and UIParent then
         local frame = SafeCall(CreateFrame, "GameTooltip", "QITPinnedItemInfo",
@@ -159,15 +167,30 @@ local function PinCurrentItem(tooltip)
     end
 
     frame:ClearAllPoints()
-    local left, top = SafeCall(tooltip.GetLeft, tooltip), SafeCall(tooltip.GetTop, tooltip)
-    if left and top then
-        local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
-        local parentScale = tonumber(SafeCall(UIParent.GetEffectiveScale, UIParent)) or 1
-        if parentScale <= 0 then parentScale = 1 end
+    -- Do not position directly OVER the original tooltip; that makes a
+    -- successful pin look like nothing happened and interferes with hover.
+    -- Convert both frames' coordinate systems before choosing a side.
+    local sourceLeft = SafeCall(tooltip.GetLeft, tooltip)
+    local sourceRight = SafeCall(tooltip.GetRight, tooltip)
+    local sourceTop = SafeCall(tooltip.GetTop, tooltip)
+    local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
+    local parentScale = tonumber(SafeCall(UIParent.GetEffectiveScale, UIParent)) or 1
+    local parentWidth = tonumber(SafeCall(UIParent.GetWidth, UIParent))
+    if parentScale <= 0 then parentScale = 1 end
+    local ratio = scale / parentScale
+    local gap, estimatedWidth = 16, 320
+    if sourceRight and sourceTop and parentWidth
+        and sourceRight * ratio + gap + estimatedWidth <= parentWidth then
         frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
-            left * scale / parentScale, top * scale / parentScale)
+            sourceRight * ratio + gap, sourceTop * ratio)
+        lastPosition = "Right of source"
+    elseif sourceLeft and sourceTop and sourceLeft * ratio >= gap + estimatedWidth then
+        frame:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT",
+            sourceLeft * ratio - gap, sourceTop * ratio)
+        lastPosition = "Left of source"
     else
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        lastPosition = "Screen center fallback"
     end
     local copiedRows = {}
     for _, row in ipairs(capture.hoverRows or {}) do
@@ -180,8 +203,11 @@ local function PinCurrentItem(tooltip)
     end
     if #copiedRows > 0 then S.turnInHoverRows[frame] = copiedRows end
     S.pinnedInfo = { frame = frame, itemID = capture.itemID }
-    lastPinResult = "Pinned item " .. tostring(capture.itemID)
     frame:Show()
+    lastPinVisible = type(frame.IsShown) ~= "function" or frame:IsShown()
+    pinSuccesses = pinSuccesses + 1
+    lastPinResult = "Pinned item " .. tostring(capture.itemID)
+        .. "; visible=" .. tostring(lastPinVisible)
 end
 
 -- A separate, always-shown watcher owns Shift; the native source tooltip's
@@ -195,7 +221,7 @@ local function StartPinController()
         if elapsedTotal < 0.05 then return end
         elapsedTotal = 0
         if S.pinnedInfo then
-            if not ShiftHeld() then ReleasePinnedItem()
+            if not ShiftHeld() then ReleasePinnedItem("Shift released")
             else UpdateTurnInHover(S.pinnedInfo.frame) end
             return
         end
@@ -217,14 +243,19 @@ end
 local function PinDiagnostics()
     local source = GameTooltip
     local capture = source and S.qitCaptures[source]
+    -- History survives releasing Shift so the player can type /qit pin
+    -- normally rather than trying to hold the modifier while typing.
     return "ShiftNow=" .. tostring(ShiftHeld())
         .. " | shiftPolls=" .. tostring(shiftSamples)
         .. " | selected=" .. tostring(capture and capture.itemID or nil)
         .. " | lastCandidate=" .. tostring(lastCandidateID)
         .. " | tooltipShown=" .. tostring(source and SafeCall(source.IsShown, source))
-        .. " | pinned=" .. tostring(S.pinnedInfo and S.pinnedInfo.itemID or nil)
+        .. " | pinnedNow=" .. tostring(S.pinnedInfo and S.pinnedInfo.itemID or nil)
         .. " | attempts=" .. tostring(pinAttempts)
+        .. " | successes=" .. tostring(pinSuccesses)
         .. " | last=" .. tostring(lastPinResult)
+        .. " | position=" .. lastPosition
+        .. " | released=" .. lastRelease
 end
 
 api.ClearTurnInHover = ClearTurnInHover
