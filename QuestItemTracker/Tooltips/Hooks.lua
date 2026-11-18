@@ -10,9 +10,32 @@ local ClearTurnInHover = assert(api.ClearTurnInHover, "QIT load order: ClearTurn
 local UpdateTurnInHover = assert(api.UpdateTurnInHover, "QIT load order: UpdateTurnInHover")
 local PinCurrentItem = assert(api.PinCurrentItem, "QIT load order: PinCurrentItem")
 local AddTooltipLines = assert(api.AddTooltipLines, "QIT load order: AddTooltipLines")
+local GetTooltipItem = assert(api.GetTooltipItem, "QIT load order: GetTooltipItem")
+local SettingEnabled = assert(api.SettingEnabled, "QIT load order: SettingEnabled")
+
+-- On stock Forever, Show IDs means ordinary item/spell IDs as well as IDs
+-- from QITF's quest list. These are our own lines, appended with the native
+-- tooltip API; never edit or resize another UI's FontStrings.
+local nativeIDRows = setmetatable({}, { __mode = "k" })
+local function AddNativeID(tooltip, label, id)
+    if not SettingEnabled("showIDs") or not tooltip
+        or type(tooltip.AddLine) ~= "function" then return end
+    id = tonumber(id)
+    if not id or id <= 0 or id ~= math.floor(id) then return end
+    local key = label .. ":" .. tostring(id)
+    if nativeIDRows[tooltip] == key then return end
+    nativeIDRows[tooltip] = key  -- set before AddLine in case the UI re-enters
+    tooltip:AddLine(label .. " ID: " .. tostring(id), 0.75, 0.75, 0.75)
+end
 
 local function RunTooltipHook(tooltip, data, explicitItemID)
     local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
+    -- Relevant quest items already get their Item ID in Render.lua. For
+    -- ordinary items, add it here without running a second quest renderer.
+    if ok and err ~= true then
+        local itemID = GetTooltipItem(tooltip, data, explicitItemID)
+        AddNativeID(tooltip, "Item", itemID)
+    end
     -- If Shift was already held as the player hovered the item, pin on the
     -- same callback: some bag UIs dismiss their item tooltip immediately.
     if ok and err == true and not S.pinnedInfo and SafeCall(IsShiftKeyDown) then
@@ -27,6 +50,7 @@ end
 -- All reset signals invalidate the same per-tooltip state. A normal
 -- client may fire more than one for a single reuse; repeated clears are safe.
 local function ClearTooltipState(tooltip)
+    nativeIDRows[tooltip] = nil
     S.decoratedTooltips[tooltip] = nil
     S.qitCaptures[tooltip] = nil
     ClearTurnInHover(tooltip)
@@ -105,6 +129,16 @@ local function InstallTooltipHook()
                 RunTooltipHook(tooltip, tooltipData)
             end)
         if ok then hooked = true; S.hookStats.typed = true end
+        -- Forever exposes spell data in the same typed tooltip API as items.
+        -- No global font hooks, OnUpdate scans, or spell-tooltip rebuilding.
+        if Enum.TooltipDataType.Spell then
+            local spellOk = pcall(TooltipDataProcessor.AddTooltipPostCall,
+                Enum.TooltipDataType.Spell,
+                function(tooltip, data)
+                    AddNativeID(tooltip, "Spell", data and data.id)
+                end)
+            if spellOk then hooked = true end
+        end
     end
 
     if HookTooltipFrame(GameTooltip) then hooked = true end
