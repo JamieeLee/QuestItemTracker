@@ -4,6 +4,15 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7] - 2026-11-18
+
+- **Quest turn-in guidance:** Show known QuestieDB finisher NPCs/objects and zones beneath quest items linked to one or two quests. For items with three or more matching quests, hover a quest row to see its destinations in a separate bubble without overcrowding the item tooltip. Unknown destinations are omitted rather than guessed.
+- **Shift-pinned information:** Hold Shift over a quest item to open a separate, interactive **Pinned** panel beside the original tooltip; release Shift to close it. Its quest-row hover bubbles retain their own destinations. Long NPC and zone names wrap without forcing changes to the native tooltip's width.
+- **Optional coordinates and navigation:** Known turn-in coordinates can be enabled in settings (off by default). A compatible TomTom position API may provide an optional read-only **Closest** NPC/city hint for grouped faction turn-ins, only where known locations are comparable. QITF never creates or changes waypoints.
+- **Simple Show IDs control:** On the stock WoW Forever UI, one opt-in setting adds item and spell IDs to tooltips and QITF quest IDs to relevant quest descriptions. When EllesmereUI's ID handler is detected, QITF leaves ID presentation to that UI and greys out its own toggle with **Handled by UI**. QITF never rewrites, hides or resizes shared tooltip text.
+- **Refined layout:** Preserve distinct destinations when compacting matching faction donation quests; group repeatable and low-level quests without repeating status clutter. Use a weathered-copper QITF heading and soft-lavender repeatable heading alongside existing native quest difficulty and faction colors.
+- **Compatibility and maintainability:** Refactor the addon into load-ordered Core, UI, TurnIns and Tooltips modules. Add error protection for unusual tooltip frames, maintain automated regression coverage and versioned release checks. Existing quest matching, faction filtering, item retention safeguards, inventory counts and character-specific history remain intact.
+
 ## [0.7-beta.11] - 2026-11-18
 
 - **Release-candidate safety review:** Keep ordinary item and spell ID appends inside the existing protected tooltip callback boundary, so errors from forbidden/unusual tooltip frames do not escape into the client. The first error is reported once rather than repeated on every hover.
