@@ -56,66 +56,115 @@ local function SettingEnabled(key)
     return value == true
 end
 
--- Unified Show IDs setting. Technical ID rows may be supplied by another
--- addon using the same GameTooltip. FontStrings are reused: never change
--- text, geometry or anchors, which can clip later tooltips (e.g. Hearthstone).
+-- One ID policy for standard named tooltip rows, independent of the bag
+-- addon that added them. We only touch exact technical identifier rows.
+-- Apply immediately after lines are appended, never by a timed rescan:
+-- repeatedly hiding visible lines caused flicker with third-party UI skins.
 local ID_KINDS = {
     itemid = true, iconid = true, questid = true, spellid = true,
     npcid = true, textureid = true, modelid = true,
 }
-local originalAlpha = setmetatable({}, { __mode = "k" })
+local hiddenRows = setmetatable({}, { __mode = "k" })
+local applyingIDs = setmetatable({}, { __mode = "k" })
 
-local function RestoreExternalIDVisibility(tooltip)
-    local stored = originalAlpha[tooltip]
-    if not stored then return end
-    for fontString, alpha in pairs(stored) do
-        if type(alpha) == "number" then
-            SafeCall(fontString.SetAlpha, fontString, alpha)
-        end
-    end
-    originalAlpha[tooltip] = nil
+local function GetRow(tooltip, index)
+    local name = SafeCall(tooltip and tooltip.GetName, tooltip)
+    if type(name) ~= "string" or name == "" then return nil, nil end
+    return _G[name .. "TextLeft" .. index], _G[name .. "TextRight" .. index]
 end
 
-local function SuppressExternalTooltipIDs(tooltip)
-    if not tooltip then return end
-    -- Restore previous rows first; they may have been reused for different
-    -- text without firing a clear/hide event.
-    RestoreExternalIDVisibility(tooltip)
-    if SettingEnabled("showIDs") then return end
-    local name = SafeCall(tooltip.GetName, tooltip)
-    local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
-    if type(name) ~= "string" or name == "" or not count then return end
+local function IsTechnicalID(text)
+    if type(text) ~= "string" or text == "" then return false end
+    local plain = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+    plain = string.gsub(plain, "|r", "")
+    plain = string.gsub(plain, "^%s+", "")
+    plain = string.gsub(plain, "%s+$", "")
+    local label = string.match(plain, "^([%a%s]+)%s*:%s*%d*$")
+        or string.match(plain, "^([%a%s]+)%s+%d+$")
+        or string.match(plain, "^([%a%s]+)$")
+    local normalized = label and string.lower(string.gsub(label, "%s+", ""))
+    return normalized and ID_KINDS[normalized] == true or false
+end
 
-    local stored
-    for i = 1, math.min(count, 100) do
-        local left = _G[name .. "TextLeft" .. i]
-        local line = left and SafeCall(left.GetText, left)
-        if type(line) == "string" and line ~= "" then
-            if string.find(line, "Quest Item Tracker Forever", 1, true) then break end
-            local clean = string.gsub(line, "|c%x%x%x%x%x%x%x%x", "")
-            clean = string.gsub(clean, "|r", "")
-            clean = string.gsub(clean, "^%s+", "")
-            clean = string.gsub(clean, "%s+$", "")
-            local label = string.match(clean, "^([%a%s]+)%s*:%s*%d*$")
-                or string.match(clean, "^([%a%s]+)%s+%d+$")
-                or string.match(clean, "^([%a%s]+)$")
-            local normalized = label and string.lower(string.gsub(label, "%s+", ""))
-            if normalized and ID_KINDS[normalized] then
-                stored = stored or {}
-                local right = _G[name .. "TextRight" .. i]
-                for _, stringRegion in ipairs({ left, right }) do
-                    if stringRegion and type(stringRegion.SetAlpha) == "function" then
-                        local alpha = SafeCall(stringRegion.GetAlpha, stringRegion)
-                        if type(alpha) == "number" then
-                            stored[stringRegion] = alpha
-                            SafeCall(stringRegion.SetAlpha, stringRegion, 0)
-                        end
+local function RestoreEntry(row, restoreText)
+    if not row then return end
+    for _, part in ipairs({ row.left, row.right }) do
+        if part and part.fontString then
+            local fs = part.fontString
+            if type(part.height) == "number" and part.height > 0 then
+                SafeCall(fs.SetHeight, fs, part.height)
+            end
+            -- Only restore text on an explicit user toggle, never on a
+            -- recycled tooltip: old ItemIDs must not leak into the next item.
+            if restoreText and SafeCall(fs.GetText, fs) == "" then
+                SafeCall(fs.SetText, fs, part.text)
+            end
+        end
+    end
+end
+
+local function RestoreExternalIDVisibility(tooltip, restoreText)
+    local rows = hiddenRows[tooltip]
+    if not rows then return end
+    for _, row in pairs(rows) do RestoreEntry(row, restoreText) end
+    hiddenRows[tooltip] = nil
+end
+
+local function SuppressExternalTooltipIDs(tooltip, mostRecentOnly)
+    if not tooltip or applyingIDs[tooltip] then return end
+    if SettingEnabled("showIDs") then
+        RestoreExternalIDVisibility(tooltip, true)
+        return
+    end
+    local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
+    if not count or count < 1 then return end
+    applyingIDs[tooltip] = true
+    local rows = hiddenRows[tooltip]
+    local first = mostRecentOnly and count or 1
+    for index = first, math.min(count, 100) do
+        local left, right = GetRow(tooltip, index)
+        local text = left and SafeCall(left.GetText, left)
+        local previous = rows and rows[index]
+        if previous and text ~= "" then
+            -- A UI reused a line without a clear event. Restore its original
+            -- dimensions before evaluating its new contents.
+            RestoreEntry(previous, false)
+            rows[index] = nil
+            previous = nil
+        end
+        if not previous and IsTechnicalID(text) then
+            local row = {}
+            for _, spec in ipairs({ { "left", left }, { "right", right } }) do
+                local fs = spec[2]
+                if fs and type(fs.GetText) == "function"
+                    and type(fs.SetText) == "function"
+                    and type(fs.SetHeight) == "function" then
+                    local currentText = SafeCall(fs.GetText, fs)
+                    local height = tonumber(SafeCall(fs.GetHeight, fs))
+                    row[spec[1]] = {
+                        fontString = fs, text = currentText,
+                        height = height,
+                    }
+                end
+            end
+            if row.left then
+                rows = rows or {}
+                rows[index] = row
+                -- Compact this row BEFORE an addon re-shows/reflows a tooltip.
+                -- Hiding via alpha leaves an entire empty row behind.
+                for _, part in ipairs({ row.left, row.right }) do
+                    if part then
+                        local fs = part.fontString
+                        SafeCall(fs.SetText, fs, "")
+                        SafeCall(fs.SetHeight, fs, 0)
                     end
                 end
             end
         end
     end
-    if stored then originalAlpha[tooltip] = stored end
+    if rows and next(rows) then hiddenRows[tooltip] = rows
+    else hiddenRows[tooltip] = nil end
+    applyingIDs[tooltip] = nil
 end
 
 -- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
