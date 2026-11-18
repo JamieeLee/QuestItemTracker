@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.7] - 2026-11-18
+
+- **UI-agnostic tooltip lifecycle:** Handle recognizable ItemID, IconID, SpellID and related technical rows immediately when standard tooltip lines are appended. Collapse the full row rather than making it transparent; restore original line height on clear, hide or reuse. Remove the timer that repeatedly hid ID text.
+- **No forced native tooltip Show():** Item tooltips remain owned and shown by WoW or the active inventory UI. QITF only adds its quest information when there is a matching quest use.
+- **Independent pin:** Replace the second GameTooltip with a QITF-owned Frame and real interactive quest-row hit targets. The independent turn-in bubble is also an ordinary noninteractive Frame, so UI skins do not control either panel.
+- **Stronger regressions:** Test ID rows added while the original tooltip is already visible, entire row compaction, normal Hearthstone text following row reuse, native Show ownership, pinned frame type and row hover behavior.
+- **Scope:** QuestieDB, retention rules, faction filtering, saved history and existing settings remain unchanged. These fixes remain unverified in the actual Forever client and are not approved for merge.
+
 ## [0.7-beta.6] - 2026-11-18
 
 - **Distinct pinned panel:** Shift-pinned QITF information appears alongside the source tooltip instead of directly covering it, with a screen-center fallback and screen clamping for difficult edges.
