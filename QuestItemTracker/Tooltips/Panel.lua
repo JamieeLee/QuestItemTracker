@@ -48,6 +48,29 @@ local function NewPanel(name, width, interactive)
         Solid(texture, 0.04, 0.04, 0.04, 0.96)
     end
 
+    -- The interactive pin is a QITF panel, not a Blizzard tooltip. A light
+    -- aged-gold outline echoes the options panel without adding another
+    -- GameTooltip skin dependency. Textures never receive mouse input.
+    if interactive then
+        local function BorderEdge(first, second, horizontal)
+            local edge = frame:CreateTexture(nil, "ARTWORK")
+            edge:SetPoint(first, frame, first, first == "TOPLEFT" and 2
+                or first == "BOTTOMLEFT" and 2 or -2,
+                first == "TOPLEFT" and -2 or first == "TOPRIGHT" and -2
+                or first == "BOTTOMLEFT" and 2 or 2)
+            edge:SetPoint(second, frame, second, second == "TOPRIGHT" and -2
+                or second == "BOTTOMRIGHT" and -2 or 2,
+                second == "TOPLEFT" and -2 or second == "TOPRIGHT" and -2
+                or second == "BOTTOMLEFT" and 2 or 2)
+            if horizontal then edge:SetHeight(2) else edge:SetWidth(2) end
+            Solid(edge, 0.63, 0.47, 0.26, 0.9)
+        end
+        BorderEdge("TOPLEFT", "TOPRIGHT", true)
+        BorderEdge("BOTTOMLEFT", "BOTTOMRIGHT", true)
+        BorderEdge("TOPLEFT", "BOTTOMLEFT", false)
+        BorderEdge("TOPRIGHT", "BOTTOMRIGHT", false)
+    end
+
     local panel = { frame = frame, width = width, labels = {}, hitFrames = {} }
     function panel:Render(lines, interactiveRows, onEnter, onLeave)
         local y = 12
