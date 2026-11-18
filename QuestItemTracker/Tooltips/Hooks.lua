@@ -7,7 +7,7 @@ local Print = assert(api.Print, "QIT load order: Print")
 local SafeCall = assert(api.SafeCall, "QIT load order: SafeCall")
 local GetItemIDFromLink = assert(api.GetItemIDFromLink, "QIT load order: GetItemIDFromLink")
 local SettingEnabled = assert(api.SettingEnabled, "QIT load order: SettingEnabled")
-local RestoreExternalIDHeights = assert(api.RestoreExternalIDHeights, "QIT load order: RestoreExternalIDHeights")
+local RestoreExternalIDVisibility = assert(api.RestoreExternalIDVisibility, "QIT load order: RestoreExternalIDVisibility")
 local SuppressExternalTooltipIDs = assert(api.SuppressExternalTooltipIDs, "QIT load order: SuppressExternalTooltipIDs")
 local ClearTurnInHover = assert(api.ClearTurnInHover, "QIT load order: ClearTurnInHover")
 local UpdateTurnInHover = assert(api.UpdateTurnInHover, "QIT load order: UpdateTurnInHover")
@@ -16,8 +16,8 @@ local AddTooltipLines = assert(api.AddTooltipLines, "QIT load order: AddTooltipL
 
 local function RunTooltipHook(tooltip, data, explicitItemID)
     local ok, err = pcall(AddTooltipLines, tooltip, data, explicitItemID)
-    -- Most bag addons place ID rows before the QIT section. Handle them even
-    -- when the item has no quest associations and QIT adds no lines.
+    -- Apply the single ID visibility policy to all standard item tooltips,
+    -- including ordinary items that never receive a QITF quest section.
     SuppressExternalTooltipIDs(tooltip)
     -- If Shift was already held as the player hovered the item, pin on the
     -- same callback: some bag UIs dismiss their item tooltip immediately.
@@ -43,15 +43,15 @@ local function HookTooltipFrame(tooltip)
 
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
             S.decoratedTooltips[self] = nil
-            S.qitStartLines[self] = nil
+            S.qitCaptures[self] = nil
             ClearTurnInHover(self)
-            RestoreExternalIDHeights(self)
+            RestoreExternalIDVisibility(self)
         end)
         pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
             S.decoratedTooltips[self] = nil
-            S.qitStartLines[self] = nil
+            S.qitCaptures[self] = nil
             ClearTurnInHover(self)
-            RestoreExternalIDHeights(self)
+            RestoreExternalIDVisibility(self)
         end)
         ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
             RunTooltipHook(self)
@@ -69,7 +69,7 @@ local function HookTooltipFrame(tooltip)
                     UpdateTurnInHover(self)
                 end
             end
-            if not SettingEnabled("suppressExternalIDs") then
+            if SettingEnabled("showIDs") then
                 rescanElapsed = 0
                 return
             end
@@ -90,9 +90,9 @@ local function HookTooltipFrame(tooltip)
         if type(tooltip.ClearLines) == "function" then
             pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
                 S.decoratedTooltips[self] = nil
-                S.qitStartLines[self] = nil
+                S.qitCaptures[self] = nil
                 ClearTurnInHover(self)
-                RestoreExternalIDHeights(self)
+                RestoreExternalIDVisibility(self)
             end)
         end
         if type(tooltip.SetBagItem) == "function" then
