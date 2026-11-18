@@ -30,6 +30,13 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.7 UI-INDEPENDENCE AUDIT
+- Standard tooltips remain under the active UI's ownership.
+- Technical ID lines collapse immediately and restore their native geometry
+  on reuse; no visible interval-based ID suppression.
+- Shift pin and hover bubble now use QITF-owned Frames, not GameTooltip.
+- New tests simulate IDs being added after the first tooltip Show.
+
 V0.7-BETA.6 PIN VISIBILITY + TOOLTIP SPACING
 - Pinned quest information opens beside the ordinary tooltip, not on top.
 - Its quest-row hover bubble does not steal mouse input.
