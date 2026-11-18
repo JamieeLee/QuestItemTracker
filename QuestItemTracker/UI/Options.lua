@@ -229,8 +229,8 @@ local function CreateOptionsPanel()
         {
             key = "showIDs", label = "Show IDs", y = -163,
             help = "Show technical identifiers in item and quest tooltips. "
-                .. "When off, recognizable ID rows from UI addons are also "
-                .. "hidden without modifying the original tooltip text or sizing.",
+                .. "When off, recognizable ID rows from UI addons are "
+                .. "collapsed. Also applies to pinned quest information.",
         },
         {
             key = "showQuestLevels", label = "Show quest levels", y = -230,
@@ -295,7 +295,10 @@ local function CreateOptionsPanel()
         label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
         label:SetText(entry.label)
         checkbox:SetScript("OnClick", function(self)
-            S.DB.settings[entry.key] = self:GetChecked() == true
+            -- Forever's checkbox API may return 1/nil instead of true/false.
+            -- Treat zero, nil and false as off; persist an actual boolean.
+            local checked = self:GetChecked()
+            S.DB.settings[entry.key] = checked ~= nil and checked ~= false and checked ~= 0
         end)
         checkboxes[#checkboxes + 1] = { frame = checkbox, key = entry.key }
     end
