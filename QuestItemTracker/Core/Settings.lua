@@ -132,6 +132,20 @@ local function SuppressExternalTooltipIDs(tooltip, mostRecentOnly)
             rows[index] = nil
             previous = nil
         end
+        if previous and text == "" and right then
+            -- AddDoubleLine sets its right-hand value AFTER calling AddLine
+            -- in some client implementations. Suppress that later value too.
+            local value = SafeCall(right.GetText, right)
+            if type(value) == "string" and value ~= "" then
+                local height = tonumber(SafeCall(right.GetHeight, right))
+                previous.right = {
+                    fontString = right, text = value,
+                    height = (previous.right and previous.right.height) or height,
+                }
+                SafeCall(right.SetText, right, "")
+                SafeCall(right.SetHeight, right, 0)
+            end
+        end
         if not previous and IsTechnicalID(text) then
             local row = {}
             for _, spec in ipairs({ { "left", left }, { "right", right } }) do
