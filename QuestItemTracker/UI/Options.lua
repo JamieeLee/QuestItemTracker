@@ -229,9 +229,9 @@ local function CreateOptionsPanel()
         },
         {
             key = "showIDs", label = "Show IDs", y = -163,
-            help = "Control item and quest IDs added by QITF. "
-                .. "Other UI addons own their identifier display. "
-                .. "When an ID provider is detected, use that UI's settings.",
+            help = "On stock WoW, show item and spell IDs on tooltips and "
+                .. "quest IDs in QITF's quest lists. When another UI handles "
+                .. "IDs, use that UI's settings instead.",
         },
         {
             key = "showQuestLevels", label = "Show quest levels", y = -230,
