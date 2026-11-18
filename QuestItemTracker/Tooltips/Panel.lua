@@ -1,7 +1,7 @@
 -- QITF-owned information panels. These are ordinary Frames, deliberately NOT
 -- GameTooltip children; UI skins and item-tooltip refreshes must not own them.
 local _, NS = ...
-local S = assert(NS.state)
+assert(NS.state)
 local api = assert(NS.api)
 local SafeCall = assert(api.SafeCall)
 
