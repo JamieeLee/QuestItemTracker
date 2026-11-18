@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.2' end
+  if key=='Version' then return '0.7-beta.3' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -36,7 +36,7 @@ _G.GetQuestDifficultyColor=function(level)
   if level == 6 then return {r=0.55,g=0.55,b=0.55} end
   return {r=1,g=0.5,b=0}
 end
-_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone',[43000]='Single Turn-in Item'})[id] end}
+_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone',[43000]='Single Turn-in Item',[43001]='Long Turn-in Item'})[id] end}
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
 _G.LibQuestieDB={
   RequireContract=function(v) return v==4 end,
@@ -46,10 +46,11 @@ _G.LibQuestieDB={
   end},
 }
 _G.QuestDB={
-  GetAllIds=function() return {821,700,701,901,902,1001,1002,1003,1004,1005} end,
+  GetAllIds=function() return {821,822,700,701,901,902,1001,1002,1003,1004,1005} end,
   name=function(id)
     return ({[700]="Grey Forager",[701]="Grey Farmer",[901]="Repeatable Hunt",
       [902]="Repeatable Offering",[821]="Chen's Empty Keg",
+      [822]="Long Turn-In",
       [1001]="A Donation of Wool",[1002]="A Donation of Wool",
       [1003]="A Donation of Wool",[1004]="A Donation of Wool",
       [1005]="A Donation of Wool"})[id]
@@ -59,27 +60,36 @@ _G.QuestDB={
   objectives=function(id)
     local items={{4894,'Plainstrider Kidney',id==700 and 2 or 5}}
     if id==821 then items[#items+1]={43000,'Single Turn-in Item',1} end
+    if id==822 then items[#items+1]={43001,'Long Turn-in Item',1} end
     return {nil,nil,items}
   end,
   requiredSourceItems=function() return nil end,
   finishedBy=function(id)
     if id>=1001 and id<=1005 then return {{3000+id-1000}} end
     if id==821 then return {{2001}} end
+    if id==822 then return {{2002}} end
   end,
 }
 _G.ItemDB={relatedQuests=function(id)
   if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end
   if id==43000 then return {821} end
+  if id==43001 then return {822} end
 end}
-_G.C_Map={GetAreaInfo=function(area) return ({[12]='Elwynn Forest',[1637]='Orgrimmar',[1519]='Stormwind City'})[area] end}
+_G.C_Map={GetAreaInfo=function(area) return ({[12]='Elwynn Forest',[17]='The Barrens',[1637]='Orgrimmar',[1519]='Stormwind City'})[area] end}
 _G.NpcDB={
   name=function(id)
     if id==2001 then return 'Brewmaster Test' end
+    if id==2002 then return 'Brewmaster Drohn' end
     if id>=3001 and id<=3005 then return 'Quartermaster '..(id-3000) end
   end,
-  zoneID=function(id) return id==2001 and 12 or 1637 end,
+  zoneID=function(id)
+    if id==2001 then return 12 end
+    if id==2002 then return 17 end
+    return 1637
+  end,
   spawns=function(id)
     if id==2001 then return {[12]={{42.5,67.2}}} end
+    if id==2002 then return {[17]={{40.0,60.0}}} end
     if id>=3001 and id<=3005 then
       local n=id-3000
       return {[1637]={{10+15*n,10+15*n}}}
@@ -392,7 +402,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.2' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.3' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -459,8 +469,9 @@ end
 -- One relevant quest should show a quiet inline location.
 local singleTurnIn=tooltip(43000)
 assert(singleTurnIn:find('Turn in:',1,true),'single quest should show inline turn-in')
-assert(singleTurnIn:find('Brewmaster Test — Elwynn Forest',1,true),
-  'single quest must show finisher name and zone')
+assert(singleTurnIn:find('Brewmaster Test',1,true)
+  and singleTurnIn:find('Elwynn Forest',1,true),
+  'single quest must show complete finisher name and zone')
 assert(not singleTurnIn:find('(42.5, 67.2)',1,true),
   'turn-in coordinates should be off by default')
 checks[9]:SetChecked(true); checks[9].scripts.OnClick(checks[9])
@@ -471,6 +482,26 @@ checks[8]:SetChecked(false); checks[8].scripts.OnClick(checks[8])
 assert(not tooltip(43000):find('Turn in:',1,true),
   'turn-in details toggle must hide name and zone')
 checks[8]:SetChecked(true); checks[8].scripts.OnClick(checks[8])
+
+
+-- Long names must wrap at the NPC/zone boundary instead of ellipsizing
+-- The Barrens; this does not depend on the source bag tooltip width.
+local longTurnIn=tooltip(43001)
+assert(longTurnIn:find('Brewmaster Drohn',1,true)
+   and longTurnIn:find('The Barrens',1,true),
+   'long turn-in location must include complete NPC and zone names')
+assert(not longTurnIn:find('Brewmaster Drohn — The Barrens',1,true),
+   'long NPC/zone line should break cleanly after the NPC')
+local sawNpcLine, sawZoneLine=false,false
+for _, line in ipairs(GameTooltip.lines) do
+  if line:find('Brewmaster Drohn',1,true) then sawNpcLine=true end
+  if line:find('The Barrens',1,true) then
+    sawZoneLine=true
+    assert(not line:find('Brewmaster Drohn',1,true),
+      'The Barrens must be on a separate clean line')
+  end
+end
+assert(sawNpcLine and sawZoneLine,'long turn-in wrapping lines missing')
 
 -- Three or more quest associations: destinations live in a side bubble,
 -- not stacked on the item tooltip. The five donation quests stay grouped.
@@ -533,13 +564,18 @@ _G.LibStub=nil
 
 -- Shift pins the original item information independently of the bag tooltip.
 local beforePin=tooltip(4894)
+-- Simulate a custom bag UI whose native tooltip stops receiving OnUpdate.
+local oldTooltipUpdate=GameTooltip.scripts.OnUpdate
+GameTooltip.scripts.OnUpdate=nil
 shiftDown=true
-GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+main.scripts.OnUpdate(main,0.15)
 local pinned
 for _,f in ipairs(frames) do
   if f.name=='QITPinnedItemInfo' then pinned=f end
 end
 assert(pinned and pinned:IsShown(),'Shift must create and show an independent info panel')
+assert(pinned.lines[1]:find('SHIFT PINNED',1,true),
+   'pinned panel should make the active Shift lock visible')
 local snapshot=table.concat(pinned.lines,'\n')
 assert(snapshot:find('A Donation of Wool',1,true)
   and snapshot:find('(5 quests)',1,true),
@@ -556,17 +592,25 @@ for index,line in ipairs(pinned.lines) do
 end
 assert(pinnedDonation,'pinned copy has no hoverable quest row')
 cursorX,cursorY=300,593-(pinnedDonation-1)*16
-pinned.scripts.OnUpdate(pinned,0.2)
+main.scripts.OnUpdate(main,0.2)
 assert(bubble.shown,'hovering grouped quest in pinned panel must show bubble')
 local pinnedDetail=table.concat(bubble.lines,' ')
 assert(pinnedDetail:find('Quartermaster 1',1,true)
    and pinnedDetail:find('Quartermaster 5',1,true),
    'pinned grouped hover bubble lost individual turn-in destinations')
 shiftDown=false
-pinned.scripts.OnUpdate(pinned,0.2)
+main.scripts.OnUpdate(main,0.2)
 assert(not pinned:IsShown() and not bubble.shown,
   'releasing Shift must close pinned panel and its side bubble')
 cursorX,cursorY=100,500
+-- Shift already held BEFORE item hover must pin on the item callback too.
+shiftDown=true
+tooltip(4894)
+assert(pinned:IsShown(),'holding Shift before hover must pin immediately')
+shiftDown=false
+main.scripts.OnUpdate(main,0.2)
+assert(not pinned:IsShown(),'release after immediate pin must work')
+GameTooltip.scripts.OnUpdate=oldTooltipUpdate
 
 -- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
 local function withExternalIDs()
