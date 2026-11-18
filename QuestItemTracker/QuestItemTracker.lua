@@ -1524,15 +1524,110 @@ local function QuestTurnInDetails(questID, withCoordinates)
     end
     AddFinishers(finishers[1], NpcDB)
     AddFinishers(finishers[2], ObjectDB)
-    if #results == 0 then return nil end
-    -- A tooltip, not a quest guide: never dump a whole list of coordinates.
-    local text = results[1]
-    if #results == 2 then
-        text = text .. " / " .. results[2]
-    elseif #results > 2 then
-        text = text .. " (+" .. (#results - 1) .. " other turn-ins)"
+    return #results > 0 and results or nil
+end
+
+
+-- Transient detail bubbles for items with three or more matching quests.
+-- The bag tooltip keeps its own mouse/owner handling; only observe the cursor.
+local turnInHoverRows = setmetatable({}, { __mode = "k" })
+local turnInBubble, turnInBubbleOwner, turnInBubbleRow
+
+local function HideTurnInBubble(owner)
+    if owner and owner ~= turnInBubbleOwner then return end
+    if turnInBubble then turnInBubble:Hide() end
+    turnInBubbleOwner, turnInBubbleRow = nil, nil
+end
+
+local function ClearTurnInHover(tooltip)
+    turnInHoverRows[tooltip] = nil
+    tooltip.qitShiftTurnIns = nil
+    HideTurnInBubble(tooltip)
+end
+
+local function ShowTurnInBubble(tooltip, row)
+    if turnInBubbleOwner == tooltip and turnInBubbleRow == row then return end
+    if not turnInBubble and type(CreateFrame) == "function" and UIParent then
+        local bubble = SafeCall(CreateFrame, "GameTooltip", "QITTurnInHoverBubble",
+            UIParent, "GameTooltipTemplate")
+        if bubble and type(bubble.SetOwner) == "function"
+            and type(bubble.AddLine) == "function"
+            and type(bubble.ClearLines) == "function" then
+            bubble:SetOwner(UIParent, "ANCHOR_NONE")
+            bubble:Hide()
+            turnInBubble = bubble
+        end
     end
-    return text
+    local bubble = turnInBubble
+    if not bubble then return end
+    bubble:Hide()
+    bubble:ClearLines()
+    bubble:AddLine(row.title, 0.89, 0.72, 0.42)
+    for i, location in ipairs(row.destinations) do
+        if i > 10 then
+            bubble:AddLine("More destinations omitted", 0.7, 0.7, 0.7)
+            break
+        end
+        bubble:AddLine(location, 0.86, 0.83, 0.76, true)
+    end
+    bubble:ClearAllPoints()
+    local right = SafeCall(tooltip.GetRight, tooltip)
+    local width = SafeCall(UIParent.GetWidth, UIParent)
+    if right and width and right + 290 > width then
+        bubble:SetPoint("TOPRIGHT", tooltip, "TOPLEFT", -8, -6)
+    else
+        bubble:SetPoint("TOPLEFT", tooltip, "TOPRIGHT", 8, -6)
+    end
+    bubble:Show()
+    turnInBubbleOwner, turnInBubbleRow = tooltip, row
+end
+
+local function UpdateTurnInHover(tooltip)
+    local rows = turnInHoverRows[tooltip]
+    if not rows or (type(tooltip.IsShown) == "function" and not tooltip:IsShown()) then
+        HideTurnInBubble(tooltip)
+        return
+    end
+    local px, py = SafeCall(GetCursorPosition)
+    local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
+    local left = SafeCall(tooltip.GetLeft, tooltip)
+    local right = SafeCall(tooltip.GetRight, tooltip)
+    local hovered
+    if scale > 0 and px and py and left and right then
+        px, py = px / scale, py / scale
+        if px >= left and px <= right then
+            local name = SafeCall(tooltip.GetName, tooltip)
+            for _, row in ipairs(rows) do
+                local label = name and _G[name .. "TextLeft" .. row.line]
+                local top = SafeCall(label and label.GetTop, label)
+                local bottom = SafeCall(label and label.GetBottom, label)
+                if top and bottom and py <= top and py >= bottom then
+                    hovered = row
+                    break
+                end
+            end
+        end
+    end
+    -- Fallback for bag UIs that close the item tooltip before the cursor can
+    -- reach a row. Shift-hover shows the details without moving off the item.
+    if not hovered and SafeCall(IsShiftKeyDown) then
+        if not tooltip.qitShiftTurnIns then
+            local all, seen = { title = "Turn-in locations", destinations = {} }, {}
+            for _, row in ipairs(rows) do
+                for _, location in ipairs(row.destinations) do
+                    local line = row.title .. ": " .. location
+                    if not seen[line] then
+                        seen[line] = true
+                        all.destinations[#all.destinations + 1] = line
+                    end
+                end
+            end
+            tooltip.qitShiftTurnIns = all
+        end
+        hovered = tooltip.qitShiftTurnIns
+    end
+    if hovered then ShowTurnInBubble(tooltip, hovered)
+    else HideTurnInBubble(tooltip) end
 end
 
 local function AddTooltipLines(tooltip, data, explicitItemID)
@@ -1595,6 +1690,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         end
     end
     if not next(matches) then return false end
+    ClearTurnInHover(tooltip)
 
     local bags, bank = CountItemInventory(itemID)
     local totalHave = bags + bank
@@ -1674,7 +1770,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             status = status,
             color = color,
             seasonal = IsSeasonalQuestByID(questID),
-            turnIn = showTurnIn and QuestTurnInDetails(questID, withCoordinates) or nil,
+            turnIns = showTurnIn and QuestTurnInDetails(questID, withCoordinates) or nil,
             rewardOrigin = IsInformationalOnly(entry)
                 and (entry.sources or {})["database quest reward"],
         }
@@ -1715,13 +1811,21 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 row.color or "",
                 row.rewardOrigin and "reward" or "ordinary",
                 row.seasonal and "seasonal" or "ordinary",
-                row.turnIn or "",
                 tostring(entry.required or ""),
                 tostring(entry.detail or ""),
             }, "\031")
             local existing = byKey[key]
             if existing then
                 existing.ids[#existing.ids + 1] = row.id
+                local seen = {}
+                for _, location in ipairs(existing.turnIns or {}) do seen[location] = true end
+                for _, location in ipairs(row.turnIns or {}) do
+                    if not seen[location] then
+                        existing.turnIns = existing.turnIns or {}
+                        existing.turnIns[#existing.turnIns + 1] = location
+                        seen[location] = true
+                    end
+                end
             else
                 row.ids = { row.id }
                 compact[#compact + 1] = row
@@ -1731,6 +1835,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         return compact
     end
 
+    local crowded = #ids >= 3
+    local hoverRows = {}
     local function ShowQuestRow(row, grouped)
         local indent = grouped and "    " or "  "
         local nameIndent = grouped and "  " or ""
@@ -1743,10 +1849,24 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
         end
         tooltip:AddLine(nameLine)
-        -- One quiet detail line, never a waypoint or a separate quest panel.
-        if row.turnIn then
-            tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
-                .. row.turnIn .. "|r", 0.8, 0.8, 0.8, true)
+        if row.turnIns and #row.turnIns > 0 then
+            if crowded then
+                local line = SafeCall(tooltip.NumLines, tooltip)
+                if line then
+                    hoverRows[#hoverRows + 1] = {
+                        line = line, title = row.name, destinations = row.turnIns,
+                    }
+                end
+            else
+                local place = row.turnIns[1]
+                if #row.turnIns == 2 then
+                    place = place .. " / " .. row.turnIns[2]
+                elseif #row.turnIns > 2 then
+                    place = place .. " (+" .. (#row.turnIns - 1) .. " other locations)"
+                end
+                tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
+                    .. place .. "|r", 0.8, 0.8, 0.8, true)
+            end
         end
 
         local status = row.status
@@ -1828,6 +1948,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
         tooltip:AddLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
     end
+    if crowded and #hoverRows > 0 then turnInHoverRows[tooltip] = hoverRows end
     if type(tooltip.Show) == "function" then tooltip:Show() end
     return true
 end
@@ -1856,10 +1977,12 @@ local function HookTooltipFrame(tooltip)
 
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
             decoratedTooltips[self] = nil
+            ClearTurnInHover(self)
             RestoreExternalIDHeights(self)
         end)
         pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
             decoratedTooltips[self] = nil
+            ClearTurnInHover(self)
             RestoreExternalIDHeights(self)
         end)
         ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
@@ -1868,8 +1991,15 @@ local function HookTooltipFrame(tooltip)
         if ok then hooked = true end
         -- Some inventory UIs append IDs after their regular tooltip callbacks.
         -- Check at most every 0.15 seconds, not every rendered frame.
-        local rescanElapsed = 0
+        local rescanElapsed, hoverElapsed = 0, 0
         pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
+            if turnInHoverRows[self] then
+                hoverElapsed = hoverElapsed + (tonumber(elapsed) or 0)
+                if hoverElapsed >= 0.05 then
+                    hoverElapsed = 0
+                    UpdateTurnInHover(self)
+                end
+            end
             if not SettingEnabled("suppressExternalIDs") then
                 rescanElapsed = 0
                 return
@@ -1891,6 +2021,7 @@ local function HookTooltipFrame(tooltip)
         if type(tooltip.ClearLines) == "function" then
             pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
                 decoratedTooltips[self] = nil
+                ClearTurnInHover(self)
                 RestoreExternalIDHeights(self)
             end)
         end
