@@ -24,6 +24,14 @@ local function RunTooltipHook(tooltip, data, explicitItemID)
     end
 end
 
+-- All reset signals invalidate the same per-tooltip state. A normal
+-- client may fire more than one for a single reuse; repeated clears are safe.
+local function ClearTooltipState(tooltip)
+    S.decoratedTooltips[tooltip] = nil
+    S.qitCaptures[tooltip] = nil
+    ClearTurnInHover(tooltip)
+end
+
 local function HookTooltipFrame(tooltip)
     if not tooltip then return false end
     local hooked = false
@@ -35,16 +43,8 @@ local function HookTooltipFrame(tooltip)
         end)
         if ok then hooked = true; S.hookStats.legacy = true end
 
-        pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
-            S.decoratedTooltips[self] = nil
-            S.qitCaptures[self] = nil
-            ClearTurnInHover(self)
-        end)
-        pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
-            S.decoratedTooltips[self] = nil
-            S.qitCaptures[self] = nil
-            ClearTurnInHover(self)
-        end)
+        pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", ClearTooltipState)
+        pcall(tooltip.HookScript, tooltip, "OnHide", ClearTooltipState)
         ok = pcall(tooltip.HookScript, tooltip, "OnShow", function(self)
             RunTooltipHook(self)
         end)
@@ -69,11 +69,7 @@ local function HookTooltipFrame(tooltip)
         -- Custom bag UIs may reuse a visible tooltip and call ClearLines()
         -- without hiding it or firing OnTooltipCleared.
         if type(tooltip.ClearLines) == "function" then
-            pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
-                S.decoratedTooltips[self] = nil
-                S.qitCaptures[self] = nil
-                ClearTurnInHover(self)
-            end)
+            pcall(hooksecurefunc, tooltip, "ClearLines", ClearTooltipState)
         end
         if type(tooltip.SetBagItem) == "function" then
             local ok = pcall(hooksecurefunc, tooltip, "SetBagItem", function(self, bag, slot)
