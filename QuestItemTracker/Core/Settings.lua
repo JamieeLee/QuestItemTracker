@@ -46,7 +46,11 @@ local DEFAULT_SETTINGS = {
     showTurnInDetails = true,
     showTurnInCoordinates = false,
 }
+local ExternalIDOwner
 local function SettingEnabled(key)
+    -- When a UI supplies its own ID controls, its presentation takes
+    -- precedence. Leave the player's saved QITF preference untouched.
+    if key == "showIDs" and ExternalIDOwner() then return false end
     local value = S.DB.settings[key]
     if value == nil and key == "showIDs" then
         return S.DB.settings.showQuestIDs == true
@@ -56,129 +60,18 @@ local function SettingEnabled(key)
     return value == true or value == 1
 end
 
--- One ID policy for standard named tooltip rows, independent of the bag
--- addon that added them. We only touch exact technical identifier rows.
--- Apply immediately after lines are appended, never by a timed rescan:
--- repeatedly hiding visible lines caused flicker with third-party UI skins.
-local ID_KINDS = {
-    itemid = true, iconid = true, questid = true, spellid = true,
-    npcid = true, textureid = true, modelid = true,
-}
-local hiddenRows = setmetatable({}, { __mode = "k" })
-local applyingIDs = setmetatable({}, { __mode = "k" })
-
-local function GetRow(tooltip, index)
-    local name = SafeCall(tooltip and tooltip.GetName, tooltip)
-    if type(name) ~= "string" or name == "" then return nil, nil end
-    return _G[name .. "TextLeft" .. index], _G[name .. "TextRight" .. index]
-end
-
-local function IsTechnicalID(text)
-    if type(text) ~= "string" or text == "" then return false end
-    local plain = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
-    plain = string.gsub(plain, "|r", "")
-    plain = string.gsub(plain, "^%s+", "")
-    plain = string.gsub(plain, "%s+$", "")
-    local label = string.match(plain, "^([%a%s]+)%s*:%s*%d*$")
-        or string.match(plain, "^([%a%s]+)%s+%d+$")
-        or string.match(plain, "^([%a%s]+)$")
-    local normalized = label and string.lower(string.gsub(label, "%s+", ""))
-    return normalized and ID_KINDS[normalized] == true or false
-end
-
-local function RestoreEntry(row, restoreText)
-    if not row then return end
-    for _, part in ipairs({ row.left, row.right }) do
-        if part and part.fontString then
-            local fs = part.fontString
-            if type(part.height) == "number" and part.height > 0 then
-                SafeCall(fs.SetHeight, fs, part.height)
-            end
-            -- Only restore text on an explicit user toggle, never on a
-            -- recycled tooltip: old ItemIDs must not leak into the next item.
-            if restoreText and SafeCall(fs.GetText, fs) == "" then
-                SafeCall(fs.SetText, fs, part.text)
-            end
-        end
+-- QITF only controls the identifiers that QITF itself adds. Modifying
+-- another addon's GameTooltipTextLeftN/RightN fontstrings changed their layout
+-- and caused clipped Hearthstone/spell descriptions on the Forever client.
+-- There is no standard WoW API to identify every third-party tooltip provider.
+-- Recognize a provider by a concrete, publicly exposed capability, never by
+-- scanning a tooltip's fontstrings or trying to rewrite its ID lines.
+ExternalIDOwner = function()
+    local ui = _G and _G.EllesmereUI
+    if type(ui) == "table" and type(ui.SpellIDOn) == "function" then
+        return "EllesmereUI"
     end
-end
-
-local function RestoreExternalIDVisibility(tooltip, restoreText)
-    local rows = hiddenRows[tooltip]
-    if not rows then return end
-    for _, row in pairs(rows) do RestoreEntry(row, restoreText) end
-    hiddenRows[tooltip] = nil
-end
-
-local function SuppressExternalTooltipIDs(tooltip, mostRecentOnly)
-    if not tooltip or applyingIDs[tooltip] then return end
-    if SettingEnabled("showIDs") then
-        RestoreExternalIDVisibility(tooltip, true)
-        return
-    end
-    local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
-    if not count or count < 1 then return end
-    applyingIDs[tooltip] = true
-    local rows = hiddenRows[tooltip]
-    local first = mostRecentOnly and count or 1
-    for index = first, math.min(count, 100) do
-        local left, right = GetRow(tooltip, index)
-        local text = left and SafeCall(left.GetText, left)
-        local previous = rows and rows[index]
-        if previous and text ~= "" then
-            -- A UI reused a line without a clear event. Restore its original
-            -- dimensions before evaluating its new contents.
-            RestoreEntry(previous, false)
-            rows[index] = nil
-            previous = nil
-        end
-        if previous and text == "" and right then
-            -- AddDoubleLine sets its right-hand value AFTER calling AddLine
-            -- in some client implementations. Suppress that later value too.
-            local value = SafeCall(right.GetText, right)
-            if type(value) == "string" and value ~= "" then
-                local height = tonumber(SafeCall(right.GetHeight, right))
-                previous.right = {
-                    fontString = right, text = value,
-                    height = (previous.right and previous.right.height) or height,
-                }
-                SafeCall(right.SetText, right, "")
-                SafeCall(right.SetHeight, right, 0)
-            end
-        end
-        if not previous and IsTechnicalID(text) then
-            local row = {}
-            for _, spec in ipairs({ { "left", left }, { "right", right } }) do
-                local fs = spec[2]
-                if fs and type(fs.GetText) == "function"
-                    and type(fs.SetText) == "function"
-                    and type(fs.SetHeight) == "function" then
-                    local currentText = SafeCall(fs.GetText, fs)
-                    local height = tonumber(SafeCall(fs.GetHeight, fs))
-                    row[spec[1]] = {
-                        fontString = fs, text = currentText,
-                        height = height,
-                    }
-                end
-            end
-            if row.left then
-                rows = rows or {}
-                rows[index] = row
-                -- Compact this row BEFORE an addon re-shows/reflows a tooltip.
-                -- Hiding via alpha leaves an entire empty row behind.
-                for _, part in ipairs({ row.left, row.right }) do
-                    if part then
-                        local fs = part.fontString
-                        SafeCall(fs.SetText, fs, "")
-                        SafeCall(fs.SetHeight, fs, 0)
-                    end
-                end
-            end
-        end
-    end
-    if rows and next(rows) then hiddenRows[tooltip] = rows
-    else hiddenRows[tooltip] = nil end
-    applyingIDs[tooltip] = nil
+    return nil
 end
 
 -- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
@@ -220,6 +113,5 @@ NS.defaults = DEFAULT_SETTINGS
 
 api.GetTooltipItem = GetTooltipItem
 api.SettingEnabled = SettingEnabled
-api.RestoreExternalIDVisibility = RestoreExternalIDVisibility
-api.SuppressExternalTooltipIDs = SuppressExternalTooltipIDs
+api.ExternalIDOwner = ExternalIDOwner
 api.QuestMatchesPlayerFaction = QuestMatchesPlayerFaction
