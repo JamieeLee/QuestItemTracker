@@ -140,7 +140,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             text = text, r = red, g = green, b = blue, wrap = wrap,
         }
     end
-    AddCapturedLine(" ")
+    -- Native item text already has its own spacing. Adding a blank line here
+    -- creates an exaggerated gap under the item name and on the pinned copy.
     AddCapturedLine("|cff66ccffQuest Item Tracker Forever|r")
     if SettingEnabled("showIDs") then
         AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
