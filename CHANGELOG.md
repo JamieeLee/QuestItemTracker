@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.5] - 2026-11-18
+
+- **One ID switch:** Consolidate three overlapping ID settings into one Show IDs toggle. It covers QITF-generated identifiers and recognized technical ID rows from the standard GameTooltip.
+- **Normal item safety:** Never alter, blank, or resize Blizzard's shared tooltip font strings to hide IDs. Restore original font-string alpha when tooltips are recycled. Add Hearthstone regression coverage.
+- **Shift ownership:** Copy only QITF-authored quest information to the independent pinned panel. Move the Shift watcher out of the bootstrap and allow mouse-hover over pinned quest rows.
+- **Simplified settings:** Faction, IDs, tooltip presentation, and turn-in details each have an appropriate section. Remove the redundant future-status label switch.
+- **Testing only:** Shift and EllesmereUI compatibility still require verification in the actual WoW Forever client. Do not merge yet.
+
 ## [0.7-beta.4] - 2026-11-17
 
 - **Architectural cleanup:** Split the monolithic addon into ordered Core, UI, TurnIns, and Tooltips modules. The main Lua file is now a small bootstrap and event coordinator, not a feature dumping ground.
