@@ -31,11 +31,15 @@ V0.6 TOOLTIP PRESENTATION
 - Existing faction filtering and retention decisions are unchanged.
 
 V0.7 BETA TURN-IN DETAILS
-- When QuestieDB identifies the quest finisher, show the NPC or object's name
-  and the zone below the quest. This is on by default.
+- When an item matches 1-2 quests, show the known quest finisher's name
+  and zone below the quest. This is on by default.
+- When it matches 3 or more, hover the quest row to show turn-ins in a small
+  side bubble instead of cluttering the bag tooltip. Shift-hover the item
+  if your bag UI closes the tooltip when you move the cursor off the item.
 - Optional coordinates are OFF by default. No map pins or navigation.
 - If QuestieDB doesn't know the turn-in, QITF doesn't guess.
-- Different turn-in destinations are never falsely collapsed together.
+- Grouped faction rows keep their compact (5 quests) label; the hover bubble
+  lists distinct turn-in destinations rather than assigning one NPC to all.
 - Test build 0.7-beta.1. SavedVariables and existing filters are unchanged.
 
 TOOLTIP PREFERENCES

@@ -6,9 +6,9 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 ## [0.7-beta.1] - 2026-11-17
 
-- **Turn-in guidance (beta):** Show the known QuestieDB quest-finisher NPC or object and its zone beneath relevant quests when available, without waypoints, quest tracking, or guessed locations.
+- **Turn-in guidance (beta):** Show the known QuestieDB quest-finisher NPC/object and zone beneath a quest when the item matches one or two quests. For three or more matches, keep the main tooltip clean and expose turn-ins in a side bubble when hovering the quest row, with a Shift-hover fallback for bag UIs that dismiss the tooltip on mouse-leave. No waypoints, quest tracking, or guessed locations.
 - **Optional coordinates:** Add a checkbox for one known turn-in coordinate, OFF by default. The NPC/zone detail is ON by default and can be disabled.
-- **Safe faction compaction:** Keep separate rows when otherwise identical quests have different turn-in destinations; do not imply one NPC accepts all grouped quests.
+- **Faction quest compaction:** Retain the compact `(5 quests)` row and preserve all distinct turn-in destinations in its hover bubble, without implying they share one NPC.
 - **Prerelease versioning:** Display `0.7-beta.1` in the game and beta build name, preserving a clean upgrade path to `0.7`. This is a test build only, not a public release.
 
 ## [0.6] - 2026-11-14
