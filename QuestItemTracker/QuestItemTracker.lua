@@ -11,44 +11,13 @@ local QuestieDBReady = assert(api.QuestieDBReady, "QIT load order: QuestieDBRead
 local BuildQuestItemIndex = assert(api.BuildQuestItemIndex, "QIT load order: BuildQuestItemIndex")
 local UpdateQuestieDBStatusLight = assert(api.UpdateQuestieDBStatusLight, "QIT load order: UpdateQuestieDBStatusLight")
 local CreateMinimapButton = assert(api.CreateMinimapButton, "QIT load order: CreateMinimapButton")
-local UpdateTurnInHover = assert(api.UpdateTurnInHover, "QIT load order: UpdateTurnInHover")
-local ReleasePinnedItem = assert(api.ReleasePinnedItem, "QIT load order: ReleasePinnedItem")
-local PinCurrentItem = assert(api.PinCurrentItem, "QIT load order: PinCurrentItem")
+local StartPinController = assert(api.StartPinController, "QIT load order: StartPinController")
 local InstallTooltipHook = assert(api.InstallTooltipHook, "QIT load order: InstallTooltipHook")
 local HandleQuestAccepted = assert(api.HandleQuestAccepted, "QIT load order: HandleQuestAccepted")
 local HandleQuestTurnedIn = assert(api.HandleQuestTurnedIn, "QIT load order: HandleQuestTurnedIn")
 local HandleQuestRemoved = assert(api.HandleQuestRemoved, "QIT load order: HandleQuestRemoved")
 
--- Independent from any tooltip's OnUpdate or hide behavior: custom bag
--- addons may replace their tooltip frame while Shift remains held.
-local pinWatchElapsed = 0
 local frame = CreateFrame("Frame")
--- An unparented data frame has no visual impact, but it must remain shown
--- or WoW may stop delivering OnUpdate while the source tooltip is hidden.
-frame:Show()
-frame:SetScript("OnUpdate", function(_, elapsed)
-    pinWatchElapsed = pinWatchElapsed + (tonumber(elapsed) or 0)
-    if pinWatchElapsed < 0.05 then return end
-    pinWatchElapsed = 0
-    if S.pinnedInfo then
-        if not SafeCall(IsShiftKeyDown) then
-            ReleasePinnedItem()
-        else
-            UpdateTurnInHover(S.pinnedInfo.frame)
-        end
-        return
-    end
-    if not SafeCall(IsShiftKeyDown) then return end
-    local source = GameTooltip
-    if source and S.decoratedTooltips[source] and S.qitStartLines[source]
-        and (type(source.IsShown) ~= "function" or source:IsShown()) then
-        PinCurrentItem(source)
-    elseif ItemRefTooltip and S.decoratedTooltips[ItemRefTooltip]
-        and S.qitStartLines[ItemRefTooltip]
-        and (type(ItemRefTooltip.IsShown) ~= "function" or ItemRefTooltip:IsShown()) then
-        PinCurrentItem(ItemRefTooltip)
-    end
-end)
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("QUEST_ACCEPTED")
@@ -60,6 +29,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         InitializeCharacterData()
         SyncQuestHistory(true)
         InstallTooltipHook()
+        StartPinController()
         CreateMinimapButton()
         if QuestieDBReady() then BuildQuestItemIndex() end
         -- No user setup/import command is required. The current quest log and
