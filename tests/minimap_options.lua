@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.5' end
+  if key=='Version' then return '0.7-beta.6' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -146,7 +146,7 @@ local function MockFrame(kind,name,parent)
   function f:SetFrameStrata() end
   function f:SetFrameLevel(level) self.level=level end
   function f:SetClampedToScreen() end
-  function f:EnableMouse() end
+  function f:EnableMouse(enabled) self.mouseEnabled=enabled end
   function f:SetMovable() end
   function f:RegisterForDrag() end
   function f:RegisterForClicks() end
@@ -404,7 +404,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.5' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.6' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -577,6 +577,16 @@ for _,f in ipairs(frames) do
   if f.name=='QITPinnedItemInfo' then pinned=f end
 end
 assert(pinned and pinned:IsShown(),'Shift must create and show an independent info panel')
+assert(pinned.mouseEnabled==true,
+  'pinned panel must accept mouse for quest-row hover')
+assert(bubble.mouseEnabled==false,
+  'destination bubble must not steal hover from pinned quest rows')
+local pinPoint=pinned.points[#pinned.points]
+assert(pinPoint and pinPoint[2]==UIParent
+    and (pinPoint[1]=='TOPLEFT' or pinPoint[1]=='TOPRIGHT'),
+    'pin must anchor independently alongside the source tooltip')
+assert(pinPoint[4]~=200,
+    'pin must not overlap the original tooltip')
 assert(pinned.lines[1]:find('SHIFT PINNED',1,true),
    'pinned panel should make the active Shift lock visible')
 local snapshot=table.concat(pinned.lines,'\n')
@@ -605,6 +615,16 @@ shiftDown=false
 pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown() and not bubble.shown,
   'releasing Shift must close pinned panel and its side bubble')
+-- A player enters the diagnostic command only AFTER releasing Shift.
+local pinOutput
+local oldPrint=DEFAULT_CHAT_FRAME.AddMessage
+DEFAULT_CHAT_FRAME.AddMessage=function(_,line) pinOutput=line end
+SlashCmdList.QUESTITEMTRACKER('pin')
+DEFAULT_CHAT_FRAME.AddMessage=oldPrint
+assert(pinOutput and pinOutput:find('successes=1',1,true)
+  and pinOutput:find('released=Shift released',1,true)
+  and pinOutput:find('last=Pinned item 4894',1,true),
+  '/qit pin must preserve the last pin result after Shift is released')
 cursorX,cursorY=100,500
 -- Shift already held BEFORE item hover must pin on the item callback too.
 shiftDown=true
