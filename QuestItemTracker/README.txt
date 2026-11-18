@@ -30,6 +30,14 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7 BETA TURN-IN DETAILS
+- When QuestieDB identifies the quest finisher, show the NPC or object's name
+  and the zone below the quest. This is on by default.
+- Optional coordinates are OFF by default. No map pins or navigation.
+- If QuestieDB doesn't know the turn-in, QITF doesn't guess.
+- Different turn-in destinations are never falsely collapsed together.
+- Test build 0.7-beta.1. SavedVariables and existing filters are unchanged.
+
 TOOLTIP PREFERENCES
 Click the draggable minimap button, or type /qit options.
 - Hover over a setting for an explanation.
@@ -37,6 +45,8 @@ Click the draggable minimap button, or type /qit options.
 - Hide technical IDs added by other addons (OFF by default).
 - Show QITF quest IDs and item IDs (OFF by default).
 - Show quest levels and bag/bank breakdown (ON by default).
+- Show turn-in NPC and zone (ON by default).
+- Show turn-in coordinates (OFF by default).
 - Show future quest labels (OFF by default): names and GREY QUEST markers
   stay visible when the repeated future-status lines are hidden.
 Settings save automatically. The settings window remembers its position.

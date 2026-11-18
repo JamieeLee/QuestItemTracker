@@ -4,6 +4,13 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.1] - 2026-11-17
+
+- **Turn-in guidance (beta):** Show the known QuestieDB quest-finisher NPC or object and its zone beneath relevant quests when available, without waypoints, quest tracking, or guessed locations.
+- **Optional coordinates:** Add a checkbox for one known turn-in coordinate, OFF by default. The NPC/zone detail is ON by default and can be disabled.
+- **Safe faction compaction:** Keep separate rows when otherwise identical quests have different turn-in destinations; do not imply one NPC accepts all grouped quests.
+- **Prerelease versioning:** Display `0.7-beta.1` in the game and beta build name, preserving a clean upgrade path to `0.7`. This is a test build only, not a public release.
+
 ## [0.6] - 2026-11-14
 
 - **Clearer item guidance:** Highlight the KEEP / NEEDED / SAFE TO DELETE decision while displaying its explanation in quieter, readable ivory.

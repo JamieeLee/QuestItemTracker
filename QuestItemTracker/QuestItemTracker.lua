@@ -857,6 +857,8 @@ local DEFAULT_SETTINGS = {
     showInventoryBreakdown = true,
     showFutureStatusLabels = false,
     filterByFaction = true,
+    showTurnInDetails = true,
+    showTurnInCoordinates = false,
 }
 local function SettingEnabled(key)
     local value = DB.settings[key]
@@ -1083,7 +1085,7 @@ local function CreateOptionsPanel()
     if not UIParent or type(CreateFrame) ~= "function" then return nil end
 
     local panel = CreateFrame("Frame", "QITOptionsPanel", UIParent)
-    panel:SetSize(360, 454)
+    panel:SetSize(360, 540)
     RestoreOptionsPanelPosition(panel)
     panel:SetFrameStrata("DIALOG")
     panel:EnableMouse(true)
@@ -1220,6 +1222,18 @@ local function CreateOptionsPanel()
                 .. "such as FUTURE QUEST, plus a summary when an item has only future uses. "
                 .. "Leaving this off keeps the tooltip shorter without removing "
                 .. "important KEEP or NEEDED advice.",
+        },
+        {
+            key = "showTurnInDetails", label = "Show turn-in NPC and zone", y = -394,
+            help = "Show where to hand in a quest item using QuestieDB's known "
+                .. "quest-finisher name and zone. Unknown destinations are omitted. "
+                .. "This is on by default; it does not add map tracking.",
+        },
+        {
+            key = "showTurnInCoordinates", label = "Show turn-in coordinates", y = -430,
+            help = "Add one known location's coordinates after the NPC and zone, "
+                .. "when QuestieDB has them. Off by default. Requires the "
+                .. "turn-in NPC and zone option above.",
         },
     }
     local idsHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1434,6 +1448,93 @@ local function CreateMinimapButton()
     end
 end
 
+
+-- Read the *finisher* from QuestieDB, not the quest starter or the completion
+-- trigger. The current Forever flavor owns these records; QITF owns no location
+-- database. Missing information is left out rather than filled with guesses.
+local function TurnInZoneName(areaID)
+    areaID = tonumber(areaID)
+    if not areaID or areaID <= 0 then return nil end
+    local name = SafeCall(C_Map and C_Map.GetAreaInfo, areaID)
+        or SafeCall(GetAreaInfo, areaID)
+    if type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+local function TurnInPlace(entityDB, id, withCoordinates)
+    if type(entityDB) ~= "table" then return nil end
+    local name = SafeCall(entityDB.name, id)
+    if type(name) ~= "string" or name == "" then return nil end
+
+    local spawns = SafeCall(entityDB.spawns, id)
+    local zoneID = tonumber(SafeCall(entityDB.zoneID, id))
+    local chosenID, zoneName
+    -- Prefer the provider's normal zone, but only if the client can name it.
+    if zoneID then
+        zoneName = TurnInZoneName(zoneID)
+        if zoneName then chosenID = zoneID end
+    end
+    if not zoneName and type(spawns) == "table" then
+        -- Deterministic alternative; never choose coordinates from a different zone.
+        local areas = {}
+        for area in pairs(spawns) do
+            local numeric = tonumber(area)
+            if numeric and numeric > 0 then areas[#areas + 1] = numeric end
+        end
+        table.sort(areas)
+        for _, area in ipairs(areas) do
+            local candidate = TurnInZoneName(area)
+            if candidate then zoneName, chosenID = candidate, area; break end
+        end
+    end
+
+    local location = name .. (zoneName and (" — " .. zoneName) or "")
+    if withCoordinates and chosenID and type(spawns) == "table" then
+        local points = spawns[chosenID] or spawns[tostring(chosenID)]
+        local point = type(points) == "table" and points[1] or nil
+        local x = point and tonumber(point[1])
+        local y = point and tonumber(point[2])
+        if x and y and x == x and y == y
+            and x >= 0 and x <= 100 and y >= 0 and y <= 100 then
+            location = location .. string.format(" (%.1f, %.1f)", x, y)
+        end
+    end
+    return location
+end
+
+local function QuestTurnInDetails(questID, withCoordinates)
+    local finishers = SafeCall(QuestDB and QuestDB.finishedBy, questID)
+    if type(finishers) ~= "table" then return nil end
+    local results, seen = {}, {}
+    local function AddFinishers(entities, provider)
+        if type(entities) ~= "table" then return end
+        local ids = {}
+        for _, value in pairs(entities) do
+            local id = tonumber(value)
+            if id and id > 0 then ids[#ids + 1] = id end
+        end
+        table.sort(ids)
+        for _, id in ipairs(ids) do
+            local location = TurnInPlace(provider, id, withCoordinates)
+            if location and not seen[location] then
+                seen[location] = true
+                results[#results + 1] = location
+            end
+        end
+    end
+    AddFinishers(finishers[1], NpcDB)
+    AddFinishers(finishers[2], ObjectDB)
+    if #results == 0 then return nil end
+    -- A tooltip, not a quest guide: never dump a whole list of coordinates.
+    local text = results[1]
+    if #results == 2 then
+        text = text .. " / " .. results[2]
+    elseif #results > 2 then
+        text = text .. " (+" .. (#results - 1) .. " other turn-ins)"
+    end
+    return text
+end
+
 local function AddTooltipLines(tooltip, data, explicitItemID)
     if not tooltip or type(tooltip.AddLine) ~= "function" then return false end
     local itemID, itemName = GetTooltipItem(tooltip, data, explicitItemID)
@@ -1547,6 +1648,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     -- Retention and per-quest status calculations above remain authoritative.
     local activeCount, futureCount, completedCount = 0, 0, 0
     local ordinaryQuests, repeatableQuests, seasonalQuests, lowLevelQuests, factionTurnIns = {}, {}, {}, {}, {}
+    local showTurnIn = SettingEnabled("showTurnInDetails")
+    local withCoordinates = showTurnIn and SettingEnabled("showTurnInCoordinates")
     for _, questID in ipairs(ids) do
         local entry = matches[questID]
         local active = activeMap[questID]
@@ -1571,6 +1674,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             status = status,
             color = color,
             seasonal = IsSeasonalQuestByID(questID),
+            turnIn = showTurnIn and QuestTurnInDetails(questID, withCoordinates) or nil,
             rewardOrigin = IsInformationalOnly(entry)
                 and (entry.sources or {})["database quest reward"],
         }
@@ -1611,6 +1715,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 row.color or "",
                 row.rewardOrigin and "reward" or "ordinary",
                 row.seasonal and "seasonal" or "ordinary",
+                row.turnIn or "",
                 tostring(entry.required or ""),
                 tostring(entry.detail or ""),
             }, "\031")
@@ -1638,6 +1743,11 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
         end
         tooltip:AddLine(nameLine)
+        -- One quiet detail line, never a waypoint or a separate quest panel.
+        if row.turnIn then
+            tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
+                .. row.turnIn .. "|r", 0.8, 0.8, 0.8, true)
+        end
 
         local status = row.status
         if grouped == "repeatable" then
