@@ -225,7 +225,6 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
 
     local showIDs = SettingEnabled("showIDs")
-    local showFuture = false -- old future-label toggle retired
     local showLevels = SettingEnabled("showQuestLevels")
 
     -- Multiple distinct faction/city quests can share the same title and level
@@ -313,7 +312,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             if status == "REPEATABLE QUEST" then
                 status = nil
             elseif status == "REPEATABLE · COMPLETED BEFORE" then
-                status = showFuture and "COMPLETED BEFORE" or nil
+                status = nil
             elseif status == "NEEDED · REPEATABLE" then
                 status = "NEEDED NOW"
             elseif status == "REPEATABLE — KEEP FOR NEXT TIME" then
@@ -323,13 +322,11 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             -- One low-level heading replaces every repeated GREY QUEST line.
             status = nil
         end
-        -- Future status lines remain opt-in; essential active states remain.
-        if not showFuture then
-            if status == "FUTURE USE · GREY QUEST" then
-                status = "GREY QUEST"
-            elseif status == "FUTURE QUEST" or status == "FUTURE USE · ABANDONED" then
-                status = nil
-            end
+        -- Future-quest boilerplate was retired; current statuses stay visible.
+        if status == "FUTURE USE · GREY QUEST" then
+            status = "GREY QUEST"
+        elseif status == "FUTURE QUEST" or status == "FUTURE USE · ABANDONED" then
+            status = nil
         end
         if status or showIDs then
             local statusLine = status and (indent .. status) or indent
@@ -381,8 +378,6 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
 
     if partial then
         AddCapturedLine("Checking remaining quests...", 0.7, 0.8, 1, true)
-    elseif activeCount == 0 and futureCount > 0 and showFuture then
-        AddCapturedLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
     elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
         AddCapturedLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
     end
