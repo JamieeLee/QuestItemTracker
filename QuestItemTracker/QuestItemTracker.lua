@@ -1804,6 +1804,25 @@ local function PinCurrentItem(tooltip)
     frame:Show()
 end
 
+
+-- Reuse the same compact, full-text formatting for regular turn-ins and
+-- optional nearest hints. WoW's native tooltip may truncate a long colored
+-- AddLine even with wrapText=true, especially near narrow bag windows.
+local function AddLocationDetailLine(tooltip, indent, label, place)
+    local split = string.find(place, " — ", 1, true)
+    local npc = split and string.sub(place, 1, split - 1)
+    local zone = split and string.sub(place, split + #" — ")
+    if npc and zone and (#npc + #zone + #label + 2) > 36 then
+        tooltip:AddLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
+            .. npc .. "|r", 0.8, 0.8, 0.8, true)
+        tooltip:AddLine(indent .. "         |cffdecfb9"
+            .. zone .. "|r", 0.8, 0.8, 0.8, true)
+    else
+        tooltip:AddLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
+            .. place .. "|r", 0.8, 0.8, 0.8, true)
+    end
+end
+
 local function AddTooltipLines(tooltip, data, explicitItemID)
     if not tooltip or type(tooltip.AddLine) ~= "function" then return false end
     local itemID, itemName = GetTooltipItem(tooltip, data, explicitItemID)
@@ -2027,8 +2046,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         if grouped == "faction" and #row.ids >= 2 then
             local nearest = ClosestFactionTurnIn(row)
             if nearest then
-                tooltip:AddLine(indent .. "|cffabb1b7Closest: |r|cffdecfb9"
-                    .. nearest .. "|r", 0.8, 0.8, 0.8, true)
+                AddLocationDetailLine(tooltip, indent, "Closest", nearest)
             end
         end
         if row.turnIns and #row.turnIns > 0 then
@@ -2046,21 +2064,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 elseif #row.turnIns > 2 then
                     place = place .. " (+" .. (#row.turnIns - 1) .. " other locations)"
                 end
-                -- WoW can ellipsize a narrow tooltip row before wrapping.
-                -- Split long destinations deliberately at the NPC / zone
-                -- boundary; no names or cities are shortened.
-                local split = string.find(place, " — ", 1, true)
-                local npc = split and string.sub(place, 1, split - 1)
-                local zone = split and string.sub(place, split + #" — ")
-                if npc and zone and (#npc + #zone + 10) > 32 then
-                    tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
-                        .. npc .. "|r", 0.8, 0.8, 0.8, true)
-                    tooltip:AddLine(indent .. "         |cffdecfb9"
-                        .. zone .. "|r", 0.8, 0.8, 0.8, true)
-                else
-                    tooltip:AddLine(indent .. "|cffabb1b7Turn in: |r|cffdecfb9"
-                        .. place .. "|r", 0.8, 0.8, 0.8, true)
-                end
+                AddLocationDetailLine(tooltip, indent, "Turn in", place)
             end
         end
 
