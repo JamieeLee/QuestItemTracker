@@ -768,7 +768,7 @@ checks[2].scripts.OnClick(checks[2])
 assert(QuestItemTrackerDB.settings.showIDs==false,
   'a disabled Show IDs checkbox must not change saved preferences')
 local externalBefore=nativeHeightChanges
-local externalLines=withExternalIDs(4894)
+withExternalIDs(4894)
 local qitExternal=table.concat(GameTooltip.lines,'\n')
 assert(not qitExternal:find('Item ID: 4894',1,true)
   and not qitExternal:find('Quest ID: 821',1,true),
