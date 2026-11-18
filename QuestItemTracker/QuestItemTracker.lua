@@ -2152,7 +2152,7 @@ local function RunTooltipHook(tooltip, data, explicitItemID)
     SuppressExternalTooltipIDs(tooltip)
     -- If Shift was already held as the player hovered the item, pin on the
     -- same callback: some bag UIs dismiss their item tooltip immediately.
-    if ok and not pinnedInfo and SafeCall(IsShiftKeyDown) then
+    if ok and err == true and not pinnedInfo and SafeCall(IsShiftKeyDown) then
         PinCurrentItem(tooltip)
     end
     if not ok and not tooltipErrorReported then
