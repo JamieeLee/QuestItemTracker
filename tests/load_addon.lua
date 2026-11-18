@@ -8,7 +8,7 @@ return function()
     for line in toc:lines() do
         local path = line:match("^%s*(.-)%s*$")
         if path:match("%.lua$") then
-            local filename = "QuestItemTracker/" .. path:gsub("\\\\", "/")
+            local filename = "QuestItemTracker/" .. path:gsub("\\", "/")
             assert(loadfile(filename), "Cannot load TOC Lua module: " .. filename)
                 ("QuestItemTracker", namespace)
             count = count + 1
