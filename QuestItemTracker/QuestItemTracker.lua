@@ -1649,7 +1649,6 @@ end
 
 local function ClearTurnInHover(tooltip)
     turnInHoverRows[tooltip] = nil
-    tooltip.qitShiftTurnIns = nil
     HideTurnInBubble(tooltip)
 end
 
@@ -1716,26 +1715,91 @@ local function UpdateTurnInHover(tooltip)
             end
         end
     end
-    -- Fallback for bag UIs that close the item tooltip before the cursor can
-    -- reach a row. Shift-hover shows the details without moving off the item.
-    if not hovered and SafeCall(IsShiftKeyDown) then
-        if not tooltip.qitShiftTurnIns then
-            local all, seen = { title = "Turn-in locations", destinations = {} }, {}
-            for _, row in ipairs(rows) do
-                for _, location in ipairs(row.destinations) do
-                    local line = row.title .. ": " .. location
-                    if not seen[line] then
-                        seen[line] = true
-                        all.destinations[#all.destinations + 1] = line
-                    end
-                end
-            end
-            tooltip.qitShiftTurnIns = all
-        end
-        hovered = tooltip.qitShiftTurnIns
-    end
     if hovered then ShowTurnInBubble(tooltip, hovered)
     else HideTurnInBubble(tooltip) end
+end
+
+
+-- Shift locks the selected item's QITF panel, not the cursor. Copy visible
+-- QITF lines so that the native bag tooltip can disappear or switch items.
+local qitStartLines = setmetatable({}, { __mode = "k" })
+local pinnedInfo, pinnedFrame
+
+local function ReleasePinnedItem()
+    if not pinnedInfo then return end
+    local frame = pinnedInfo.frame
+    pinnedInfo = nil
+    ClearTurnInHover(frame)
+    frame:Hide()
+end
+
+local function PinCurrentItem(tooltip)
+    if pinnedInfo or not SafeCall(IsShiftKeyDown) then return end
+    local id = decoratedTooltips[tooltip]
+    local start = qitStartLines[tooltip]
+    local sourceName = SafeCall(tooltip.GetName, tooltip)
+    local count = SafeCall(tooltip.NumLines, tooltip)
+    if not id or not start or not count or count <= start
+        or type(sourceName) ~= "string" then return end
+    if not pinnedFrame and type(CreateFrame) == "function" and UIParent then
+        local f = SafeCall(CreateFrame, "GameTooltip", "QITPinnedItemInfo",
+            UIParent, "GameTooltipTemplate")
+        if f and type(f.SetOwner) == "function" and type(f.AddLine) == "function"
+            and type(f.ClearLines) == "function" then
+            f:SetOwner(UIParent, "ANCHOR_NONE")
+            if type(f.SetFrameStrata) == "function" then f:SetFrameStrata("TOOLTIP") end
+            if type(f.SetFrameLevel) == "function" then f:SetFrameLevel(500) end
+            if type(f.EnableMouse) == "function" then f:EnableMouse(false) end
+            pinnedFrame = f
+        end
+    end
+    local frame = pinnedFrame
+    if not frame then return end
+    frame:Hide()
+    frame:ClearLines()
+    frame:AddLine("|cffffdfa0" .. (GetItemName(id) or ("Item " .. id)) .. "|r")
+    local added = 0
+    for index = start + 1, count do
+        local label = _G[sourceName .. "TextLeft" .. index]
+        local txt = SafeCall(label and label.GetText, label)
+        if type(txt) == "string" then
+            local r, g, b = SafeCall(label.GetTextColor, label)
+            frame:AddLine(txt, r or 0.9, g or 0.9, b or 0.9, true)
+            added = added + 1
+        end
+    end
+    if added == 0 then return end
+    frame:ClearAllPoints()
+    local left, top = SafeCall(tooltip.GetLeft, tooltip), SafeCall(tooltip.GetTop, tooltip)
+    if left and top then
+        local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
+        local parentScale = tonumber(SafeCall(UIParent.GetEffectiveScale, UIParent)) or 1
+        if parentScale <= 0 then parentScale = 1 end
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
+            left * scale / parentScale, top * scale / parentScale)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 150, 0)
+    end
+    if turnInHoverRows[tooltip] then
+        local copied = {}
+        for _, row in ipairs(turnInHoverRows[tooltip]) do
+            copied[#copied + 1] = {
+                line = row.line - start + 1,
+                title = row.title, destinations = row.destinations,
+            }
+        end
+        turnInHoverRows[frame] = copied
+    end
+    pinnedInfo = {frame = frame, itemID = id}
+    frame:SetScript("OnUpdate", function(self)
+        if not pinnedInfo or pinnedInfo.frame ~= self then return end
+        if not SafeCall(IsShiftKeyDown) then
+            ReleasePinnedItem()
+        else
+            UpdateTurnInHover(self)
+        end
+    end)
+    frame:Show()
 end
 
 local function AddTooltipLines(tooltip, data, explicitItemID)
@@ -1817,6 +1881,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     -- Mark this tooltip before rendering: Show() may invoke tooltip hooks again.
     decoratedTooltips[tooltip] = itemID
 
+    qitStartLines[tooltip] = SafeCall(tooltip.NumLines, tooltip) or 0
     tooltip:AddLine(" ")
     tooltip:AddLine("|cff66ccffQuest Item Tracker Forever|r")
     if SettingEnabled("showItemIDs") then
@@ -2092,11 +2157,13 @@ local function HookTooltipFrame(tooltip)
 
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", function(self)
             decoratedTooltips[self] = nil
+            qitStartLines[self] = nil
             ClearTurnInHover(self)
             RestoreExternalIDHeights(self)
         end)
         pcall(tooltip.HookScript, tooltip, "OnHide", function(self)
             decoratedTooltips[self] = nil
+            qitStartLines[self] = nil
             ClearTurnInHover(self)
             RestoreExternalIDHeights(self)
         end)
@@ -2108,7 +2175,9 @@ local function HookTooltipFrame(tooltip)
         -- Check at most every 0.15 seconds, not every rendered frame.
         local rescanElapsed, hoverElapsed = 0, 0
         pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
-            if turnInHoverRows[self] then
+            if pinnedInfo and not SafeCall(IsShiftKeyDown) then ReleasePinnedItem() end
+            if not pinnedInfo and SafeCall(IsShiftKeyDown) then PinCurrentItem(self) end
+            if not pinnedInfo and turnInHoverRows[self] then
                 hoverElapsed = hoverElapsed + (tonumber(elapsed) or 0)
                 if hoverElapsed >= 0.05 then
                     hoverElapsed = 0
@@ -2136,6 +2205,7 @@ local function HookTooltipFrame(tooltip)
         if type(tooltip.ClearLines) == "function" then
             pcall(hooksecurefunc, tooltip, "ClearLines", function(self)
                 decoratedTooltips[self] = nil
+                qitStartLines[self] = nil
                 ClearTurnInHover(self)
                 RestoreExternalIDHeights(self)
             end)
