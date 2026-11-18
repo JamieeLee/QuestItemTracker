@@ -6,7 +6,6 @@ local api = assert(NS.api)
 local Print = assert(api.Print, "QIT load order: Print")
 local SafeCall = assert(api.SafeCall, "QIT load order: SafeCall")
 local GetItemIDFromLink = assert(api.GetItemIDFromLink, "QIT load order: GetItemIDFromLink")
-local SettingEnabled = assert(api.SettingEnabled, "QIT load order: SettingEnabled")
 local RestoreExternalIDVisibility = assert(api.RestoreExternalIDVisibility, "QIT load order: RestoreExternalIDVisibility")
 local SuppressExternalTooltipIDs = assert(api.SuppressExternalTooltipIDs, "QIT load order: SuppressExternalTooltipIDs")
 local ClearTurnInHover = assert(api.ClearTurnInHover, "QIT load order: ClearTurnInHover")
@@ -57,9 +56,9 @@ local function HookTooltipFrame(tooltip)
             RunTooltipHook(self)
         end)
         if ok then hooked = true end
-        -- Some inventory UIs append IDs after their regular tooltip callbacks.
-        -- Check at most every 0.15 seconds, not every rendered frame.
-        local rescanElapsed, hoverElapsed = 0, 0
+        -- The only source tooltip polling is for native quest-row hover.
+        -- ID rows are handled synchronously when their lines are appended.
+        local hoverElapsed = 0
         pcall(tooltip.HookScript, tooltip, "OnUpdate", function(self, elapsed)
             if not S.pinnedInfo and S.turnInHoverRows[self] then
                 hoverElapsed = hoverElapsed + (tonumber(elapsed) or 0)
@@ -68,15 +67,6 @@ local function HookTooltipFrame(tooltip)
                     UpdateTurnInHover(self)
                 end
             end
-            if SettingEnabled("showIDs") then
-                rescanElapsed = 0
-                return
-            end
-            rescanElapsed = rescanElapsed + (tonumber(elapsed) or 0)
-            if rescanElapsed >= 0.15 then
-                rescanElapsed = 0
-                SuppressExternalTooltipIDs(self)
-            end
         end)
     end
 
@@ -84,6 +74,19 @@ local function HookTooltipFrame(tooltip)
     -- tooltip item or a legacy item script. Securely hook the bag/item setters
     -- to obtain the actual item ID even when tooltip:GetItem() is empty.
     if type(hooksecurefunc) == "function" then
+        -- A generic hook on the standard tooltip append methods is earlier
+        -- than OnUpdate and independent of which UI addon supplied the row.
+        -- Keep identifier suppression out of the QIT item matcher.
+        if type(tooltip.AddLine) == "function" then
+            pcall(hooksecurefunc, tooltip, "AddLine", function(self)
+                SuppressExternalTooltipIDs(self, true)
+            end)
+        end
+        if type(tooltip.AddDoubleLine) == "function" then
+            pcall(hooksecurefunc, tooltip, "AddDoubleLine", function(self)
+                SuppressExternalTooltipIDs(self, true)
+            end)
+        end
         -- Custom bag UIs may reuse a visible tooltip and call ClearLines()
         -- without hiding it or firing OnTooltipCleared.
         if type(tooltip.ClearLines) == "function" then
@@ -91,6 +94,13 @@ local function HookTooltipFrame(tooltip)
                 S.decoratedTooltips[self] = nil
                 S.qitCaptures[self] = nil
                 ClearTurnInHover(self)
+                RestoreExternalIDVisibility(self)
+            end)
+        end
+        if type(tooltip.SetOwner) == "function" then
+            pcall(hooksecurefunc, tooltip, "SetOwner", function(self)
+                -- Owners change while the same named GameTooltip fontstrings
+                -- are recycled. Discard old hidden-ID geometry first.
                 RestoreExternalIDVisibility(self)
             end)
         end
