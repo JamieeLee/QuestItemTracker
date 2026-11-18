@@ -200,8 +200,12 @@ local shiftDown=false
 _G.IsShiftKeyDown=function() return shiftDown end
 _G.GetCursorPosition=function() return cursorX,cursorY end
 local typedHook
-_G.Enum={TooltipDataType={Item=222}}
-_G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
+local typedHooks={}
+_G.Enum={TooltipDataType={Item=222,Spell=333}}
+_G.TooltipDataProcessor={AddTooltipPostCall=function(kind,fn)
+  typedHooks[kind]=fn
+  if kind==222 then typedHook=fn end
+end}
 _G.GameTooltip={lines={},scripts={}}
 function GameTooltip:GetLeft() return 200 end
 function GameTooltip:GetTop() return 600 end
@@ -270,7 +274,8 @@ for _, worker in ipairs(frames) do
     end
   end
 end
-assert(typedHook,'typed tooltip hook not installed')
+assert(typedHook and typedHooks[333],
+  'both item and spell data hooks must be installed on Forever')
 local button
 for _, f in ipairs(frames) do if f.name=='QITMinimapButton' then button=f end end
 assert(button,'minimap bubble not created at login')
@@ -445,7 +450,7 @@ assert(not checks[6]:GetChecked(),'turn-in coordinates should be off by default'
 -- The expanded hit area lets players hover (and click) on the label as well.
 local expectedHelps={
   {'Only show my faction quests','other faction'},
-  {'Show IDs','item and quest IDs'},
+  {'Show IDs','item and spell IDs'},
   {'Show quest levels','quest'},
   {'Show bag / bank breakdown','bags and bank'},
   {'Show turn-in NPC and zone','quest-finisher'},
@@ -776,6 +781,11 @@ assert(not qitExternal:find('Item ID: 4894',1,true)
 assert(nativeHeightChanges==externalBefore
   and _G.GameTooltipTextLeft1:GetText()=='ItemID',
   'an external ID provider must retain its untouched tooltip rows')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'a UI provider must disable QITF-generated stock spell identifiers')
 _G.EllesmereUI=nil
 panel:Hide();panel:Show()
 assert(checks[2]:IsEnabled()==true and not checks[2]:GetChecked(),
@@ -823,7 +833,12 @@ assert(clean:find('Have 5 / Need 5',1,true),'Have/Need was lost')
 assert(clean:find('(Level 15)',1,true),'quest level should appear by default')
 assert(not clean:find('Quest ID:',1,true) and not clean:find('Item ID:',1,true),'IDs visible by default')
 assert(clean:find('Bags: 3 | Bank: 2',1,true),'default bank counts missing')
-assert(tooltip(6948)=='','ordinary item was decorated')
+assert(tooltip(6948)=='','ordinary item must not have IDs when off')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'Show IDs off must not add a spell ID')
 assert(not tooltip(4894):find('FUTURE QUEST',1,true),
   'redundant future quest labels should remain hidden')
 checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
@@ -832,6 +847,18 @@ assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
 assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
   'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
+local ordinaryID=tooltip(6948)
+assert(ordinaryID=='Item ID: 6948',
+  'Show IDs on must add an item ID to ordinary items without quest uses')
+typedHook(GameTooltip,{id=6948,type=222})
+assert(#GameTooltip.lines==1,
+  'multiple item callbacks must not duplicate the native item ID row')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot\nSpell ID: 3044',
+  'Show IDs on must add exactly one native spell ID without altering spell text')
 for _,i in ipairs({3,4}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
 end
@@ -851,6 +878,13 @@ reset.scripts.OnClick(reset)
 local restored=tooltip(4894)
 assert(not restored:find('Quest ID:',1,true),'reset did not hide quest IDs')
 assert(not restored:find('Item ID:',1,true),'reset did not hide item IDs')
+assert(tooltip(6948)=='',
+  'reset must hide ordinary stock item identifiers too')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'reset must hide stock spell identifiers too')
 assert(restored:find('(Level 15)',1,true),'reset did not show quest levels')
 assert(restored:find('Bags: 3 | Bank: 2',1,true),'reset did not show breakdown')
 assert(not restored:find('FUTURE QUEST',1,true),'reset did not hide future labels')
