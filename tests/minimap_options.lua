@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.7' end
+  if key=='Version' then return '0.7-beta.8' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -404,7 +404,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.7' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.8' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -567,7 +567,21 @@ for _, f in ipairs(frames) do
   if f.name == 'QITPinController' then pinController = f end
 end
 assert(pinController, 'independent pin controller must be installed')
+-- Forever may return 1/nil from GetChecked. Test the real checkbox path
+-- instead of only writing SavedVariables by hand.
+checks[2].GetChecked=function(self) return self.checked and 1 or nil end
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==true,
+  'Forever checked value 1 must save Show IDs as true')
 local beforePin=tooltip(4894)
+assert(beforePin:find('Item ID: 4894',1,true)
+    and beforePin:find('Quest ID: 821',1,true),
+  'Show IDs on must render QITF identifiers')
+-- The original tooltip was captured while IDs were ON. Switching them OFF
+-- before Shift pinning must still remove the technical ID rows in the pin.
+checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==false,
+  'Forever unchecked value nil must save Show IDs as false')
 -- Simulate a custom bag UI whose native tooltip stops receiving OnUpdate.
 local oldTooltipUpdate=GameTooltip.scripts.OnUpdate
 GameTooltip.scripts.OnUpdate=nil
@@ -589,9 +603,22 @@ assert(pinPoint and pinPoint[2]==UIParent
 assert(pinPoint[4]~=200,
     'pin must not overlap the original tooltip')
 assert(pinned.kind=='Frame', 'pin must be a plain independent Frame, not GameTooltip')
-assert(pinned.qitLines[1]:find('SHIFT PINNED',1,true),
-   'pinned panel should make the active Shift lock visible')
+assert(pinned.qitLines[1]:find('Pinned',1,true)
+   and not pinned.qitLines[1]:find('SHIFT PINNED',1,true),
+   'pin should use the concise Pinned label')
+local trimCount=0
+for _, f in ipairs(frames) do
+  if f.kind=='Texture' and f.parent==pinned and f.color
+    and f.color[1]>0.45 and f.color[1]>f.color[2]
+    and f.color[2]>f.color[3] then
+      trimCount=trimCount+1
+  end
+end
+assert(trimCount==4,'pinned panel should have four aged-gold border edges')
 local snapshot=table.concat(pinned.qitLines,'\n')
+assert(not snapshot:find('Item ID:',1,true)
+   and not snapshot:find('Quest ID:',1,true),
+   'Show IDs off must strip QITF item/quest IDs even from older captures')
 assert(snapshot:find('A Donation of Wool',1,true)
   and snapshot:find('(5 quests)',1,true),
   'pinned panel must preserve the original grouped quest information')
@@ -634,12 +661,19 @@ assert(pinOutput and pinOutput:find('successes=1',1,true)
   '/qit pin must preserve the last pin result after Shift is released')
 cursorX,cursorY=100,500
 -- Shift already held BEFORE item hover must pin on the item callback too.
+-- When Show IDs is enabled, the pinned view must include those same IDs.
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
 shiftDown=true
 tooltip(4894)
 assert(pinned:IsShown(),'holding Shift before hover must pin immediately')
+local pinWithIDs=table.concat(pinned.qitLines,'\n')
+assert(pinWithIDs:find('Item ID: 4894',1,true)
+   and pinWithIDs:find('Quest ID: 821',1,true),
+   'Show IDs on must show item and quest IDs inside the pinned panel')
 shiftDown=false
 pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown(),'release after immediate pin must work')
+checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
 GameTooltip.scripts.OnUpdate=oldTooltipUpdate
 
 -- One ID setting handles all recognizable technical ID rows, including
