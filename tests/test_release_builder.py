@@ -163,7 +163,7 @@ class ReleaseBuilderTests(unittest.TestCase):
     def test_missing_toc_module_blocks_package(self):
         addon = self.root / "QuestItemTracker"
         (addon / "QuestItemTracker.toc").write_text(
-            "## Version: 0.2\\nCore/Absent.lua\\nQuestItemTracker.lua\\n"
+            "## Version: 0.2\nCore/Absent.lua\nQuestItemTracker.lua\n"
         )
         with self.assertRaisesRegex(ValueError, "Missing or invalid .toc Lua module"):
             rb.create_package(self.root, self.root, "0.2")
