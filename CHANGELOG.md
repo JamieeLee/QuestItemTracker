@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.6] - 2026-11-18
+
+- **Distinct pinned panel:** Shift-pinned QITF information appears alongside the source tooltip instead of directly covering it, with a screen-center fallback and screen clamping for difficult edges.
+- **Hover interaction:** Keep the pinned information mouse-interactive and its turn-in destination bubble mouse-transparent so the two tooltips do not compete for mouse focus.
+- **Compact spacing:** Remove QITF's extra blank separator line from both ordinary tooltips and pinned information.
+- **Useful Shift diagnostics:** `/qit pin` retains successful capture, positioning, and release details after Shift has been released. Count only real pin captures, not hundreds of failed background polls; remove the redundant tooltip OnUpdate pin attempt.
+- **Test build:** Mock checks cover positioning, mouse behavior, and diagnostics after release; actual WoW Forever validation remains required. No release or main merge.
+
 ## [0.7-beta.5] - 2026-11-18
 
 - **One ID switch:** Consolidate three overlapping ID settings into one Show IDs toggle. It covers QITF-generated identifiers and recognized technical ID rows from the standard GameTooltip.
