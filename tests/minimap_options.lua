@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.9' end
+  if key=='Version' then return '0.7-beta.10' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -422,7 +422,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.9' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.10' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -801,6 +801,8 @@ assert(clean:find('(5 quests)',1,true),'five identical donation quests must be c
 assert(not clean:find('A Donation of Wool',clean:find('A Donation of Wool',1,true)+1,true),
   'duplicate donation rows were not compacted')
 assert(clean:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
+assert(clean:find('|cffc88b73Quest Item Tracker Forever|r',1,true),
+  'QITF header must use weathered copper, not crafting-reagent blue')
 assert(clean:find('Grey Forager',1,true) and clean:find('Grey Farmer',1,true),
   'both low-level quest names must remain visible')
 assert(clean:find('Repeatable Hunt',1,true) and clean:find('Repeatable Offering',1,true),
