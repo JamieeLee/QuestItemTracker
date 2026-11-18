@@ -1,19 +1,34 @@
--- QITF / Tooltips/Interaction.lua: owns tooltips responsibilities.
-local addonName, NS = ...
-assert(type(NS) == "table", "QIT requires WoW's addon namespace")
-local S = assert(NS.state, "QIT Core/History.lua must load first")
+-- Tooltip interaction only: native quest-row observation and independent
+-- QITF panels. Rendering/layout lives in Tooltips/Panel.lua.
+local _, NS = ...
+local S = assert(NS.state)
 local api = assert(NS.api)
-local SafeCall = assert(api.SafeCall, "QIT load order: SafeCall")
-local GetItemName = assert(api.GetItemName, "QIT load order: GetItemName")
+local SafeCall = assert(api.SafeCall)
+local GetItemName = assert(api.GetItemName)
+local NewInfoPanel = assert(api.NewInfoPanel)
 
--- Transient detail bubbles for items with three or more matching quests.
--- The bag tooltip keeps its own mouse/owner handling; only observe the cursor.
+-- Native GameTooltip rows may have destinations; the pinned QITF panel has
+-- its own real mouse hit boxes and never requires native fontstring lookups.
 S.turnInHoverRows = setmetatable({}, { __mode = "k" })
+S.qitCaptures = setmetatable({}, { __mode = "k" })
+S.pinnedInfo = nil
+
 local turnInBubble, turnInBubbleOwner, turnInBubbleRow
+local pinnedPanel, pinController
+local pinAttempts, pinSuccesses, shiftSamples = 0, 0, 0
+local lastPinResult = "No pin attempt recorded"
+local lastRelease = "Not pinned yet"
+local lastPosition = "Not positioned"
+local lastCandidateID
+
+local function ShiftHeld()
+    local down = SafeCall(IsShiftKeyDown)
+    return down == true or down == 1
+end
 
 local function HideTurnInBubble(owner)
     if owner and owner ~= turnInBubbleOwner then return end
-    if turnInBubble then turnInBubble:Hide() end
+    if turnInBubble then turnInBubble.frame:Hide() end
     turnInBubbleOwner, turnInBubbleRow = nil, nil
 end
 
@@ -22,44 +37,35 @@ local function ClearTurnInHover(tooltip)
     HideTurnInBubble(tooltip)
 end
 
-local function ShowTurnInBubble(tooltip, row)
-    if turnInBubbleOwner == tooltip and turnInBubbleRow == row then return end
-    if not turnInBubble and type(CreateFrame) == "function" and UIParent then
-        local bubble = SafeCall(CreateFrame, "GameTooltip", "QITTurnInHoverBubble",
-            UIParent, "GameTooltipTemplate")
-        if bubble and type(bubble.SetOwner) == "function"
-            and type(bubble.AddLine) == "function"
-            and type(bubble.ClearLines) == "function" then
-            bubble:SetOwner(UIParent, "ANCHOR_NONE")
-            if type(bubble.EnableMouse) == "function" then
-                bubble:EnableMouse(false)
-            end
-            bubble:Hide()
-            turnInBubble = bubble
-        end
+local function ShowTurnInBubble(owner, row)
+    if turnInBubbleOwner == owner and turnInBubbleRow == row then return end
+    if not turnInBubble then
+        turnInBubble = NewInfoPanel("QITTurnInHoverBubble", 285, false)
     end
-    local bubble = turnInBubble
-    if not bubble then return end
-    bubble:Hide()
-    bubble:ClearLines()
-    bubble:AddLine(row.title, 0.89, 0.72, 0.42)
-    for i, location in ipairs(row.destinations) do
+    if not turnInBubble then return end
+    local lines = { { text = row.title, r = 0.89, g = 0.72, b = 0.42 } }
+    for i, location in ipairs(row.destinations or {}) do
         if i > 10 then
-            bubble:AddLine("More destinations omitted", 0.7, 0.7, 0.7)
+            lines[#lines + 1] = { text = "More destinations omitted", r = 0.7, g = 0.7, b = 0.7 }
             break
         end
-        bubble:AddLine(location, 0.86, 0.83, 0.76, true)
+        lines[#lines + 1] = { text = location, r = 0.86, g = 0.83, b = 0.76 }
     end
+    turnInBubble:Render(lines)
+    local bubble = turnInBubble.frame
     bubble:ClearAllPoints()
-    local right = SafeCall(tooltip.GetRight, tooltip)
-    local width = SafeCall(UIParent.GetWidth, UIParent)
-    if right and width and right + 290 > width then
-        bubble:SetPoint("TOPRIGHT", tooltip, "TOPLEFT", -8, -6)
+    local right = tonumber(SafeCall(owner.GetRight, owner))
+    local scale = tonumber(SafeCall(owner.GetEffectiveScale, owner)) or 1
+    local parentScale = tonumber(SafeCall(UIParent.GetEffectiveScale, UIParent)) or 1
+    local screenWidth = tonumber(SafeCall(UIParent.GetWidth, UIParent))
+    if parentScale <= 0 then parentScale = 1 end
+    if right and screenWidth and right * scale / parentScale + 300 > screenWidth then
+        bubble:SetPoint("TOPRIGHT", owner, "TOPLEFT", -10, -3)
     else
-        bubble:SetPoint("TOPLEFT", tooltip, "TOPRIGHT", 8, -6)
+        bubble:SetPoint("TOPLEFT", owner, "TOPRIGHT", 10, -3)
     end
+    turnInBubbleOwner, turnInBubbleRow = owner, row
     bubble:Show()
-    turnInBubbleOwner, turnInBubbleRow = tooltip, row
 end
 
 local function UpdateTurnInHover(tooltip)
@@ -70,8 +76,7 @@ local function UpdateTurnInHover(tooltip)
     end
     local px, py = SafeCall(GetCursorPosition)
     local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
-    local left = SafeCall(tooltip.GetLeft, tooltip)
-    local right = SafeCall(tooltip.GetRight, tooltip)
+    local left, right = SafeCall(tooltip.GetLeft, tooltip), SafeCall(tooltip.GetRight, tooltip)
     local hovered
     if scale > 0 and px and py and left and right then
         px, py = px / scale, py / scale
@@ -92,149 +97,109 @@ local function UpdateTurnInHover(tooltip)
     else HideTurnInBubble(tooltip) end
 end
 
-
--- QITF owns a snapshot of its authored quest lines, independent of the
--- native GameTooltip. Bag addons may recycle or hide that tooltip anytime.
-S.qitCaptures = setmetatable({}, { __mode = "k" })
-S.pinnedInfo = nil
-local pinnedFrame, pinController
-local pinAttempts, pinSuccesses, shiftSamples = 0, 0, 0
-local lastPinResult = "No pin attempt recorded"
-local lastRelease = "Not pinned yet"
-local lastPosition = "Not positioned"
-local lastPinVisible = false
-local lastCandidateID
-
-local function ShiftHeld()
-    local down = SafeCall(IsShiftKeyDown)
-    return down == true or down == 1
-end
-
 local function ReleasePinnedItem(reason)
     local pinned = S.pinnedInfo
     if not pinned then return end
     lastRelease = tostring(reason or "released") .. " (item " .. tostring(pinned.itemID) .. ")"
     S.pinnedInfo = nil
-    ClearTurnInHover(pinned.frame)
+    HideTurnInBubble(pinned.frame)
     pinned.frame:Hide()
 end
 
 local function PinCurrentItem(tooltip)
     if S.pinnedInfo or not ShiftHeld() then return end
     local capture = tooltip and S.qitCaptures[tooltip]
-    -- A normal item has no QITF capture. Polling Shift must not count every
-    -- OnUpdate as a failed pin, which previously produced hundreds of attempts.
-    if not capture or type(capture.lines) ~= "table" or #capture.lines == 0 then
-        return
-    end
+    if not capture or not capture.lines or #capture.lines == 0 then return end
     lastCandidateID = capture.itemID
     pinAttempts = pinAttempts + 1
-
-    if not pinnedFrame and type(CreateFrame) == "function" and UIParent then
-        local frame = SafeCall(CreateFrame, "GameTooltip", "QITPinnedItemInfo",
-            UIParent, "GameTooltipTemplate")
-        if frame and type(frame.SetOwner) == "function"
-            and type(frame.AddLine) == "function"
-            and type(frame.ClearLines) == "function" then
-            frame:SetOwner(UIParent, "ANCHOR_NONE")
-            if type(frame.SetFrameStrata) == "function" then
-                frame:SetFrameStrata("TOOLTIP")
-            end
-            if type(frame.SetFrameLevel) == "function" then frame:SetFrameLevel(500) end
-            -- Quest row hover needs this independent tooltip to accept mouse.
-            if type(frame.EnableMouse) == "function" then frame:EnableMouse(true) end
-            if type(frame.SetClampedToScreen) == "function" then
-                frame:SetClampedToScreen(true)
-            end
-            pinnedFrame = frame
-        end
+    if not pinnedPanel then
+        pinnedPanel = NewInfoPanel("QITPinnedItemInfo", 330, true)
     end
-    local frame = pinnedFrame
-    if not frame then
-        lastPinResult = "Pinned info frame could not be created"
+    if not pinnedPanel then
+        lastPinResult = "Pinned frame creation failed"
         return
     end
+    local frame = pinnedPanel.frame
     frame:Hide()
-    frame:ClearLines()
-    frame:AddLine("|cffffdfa0"
-        .. (GetItemName(capture.itemID) or ("Item " .. tostring(capture.itemID)))
-        .. "|r  |cff8aaac5SHIFT PINNED|r")
-    for _, line in ipairs(capture.lines) do
-        frame:AddLine(line.text, line.r, line.g, line.b, line.wrap)
+    local content = {
+        { text = "|cffffdfa0" .. GetItemName(capture.itemID)
+            .. "|r  |cff8aaac5SHIFT PINNED|r" },
+    }
+    for _, line in ipairs(capture.lines) do content[#content + 1] = line end
+    local hoverTargets = {}
+    for _, row in ipairs(capture.hoverRows or {}) do
+        if row.captureLine then
+            hoverTargets[row.captureLine + 1] = row
+        end
     end
-    if type(frame.SetMinimumWidth) == "function" then
-        frame:SetMinimumWidth(300)
-    end
+    pinnedPanel:Render(content, hoverTargets,
+        function(row) ShowTurnInBubble(frame, row) end,
+        function() HideTurnInBubble(frame) end)
 
+    -- Anchor ONCE to screen coordinates. The panel is never owned or moved
+    -- by the native tooltip or cursor, even if the bag addon recycles it.
     frame:ClearAllPoints()
-    -- Do not position directly OVER the original tooltip; that makes a
-    -- successful pin look like nothing happened and interferes with hover.
-    -- Convert both frames' coordinate systems before choosing a side.
-    local sourceLeft = SafeCall(tooltip.GetLeft, tooltip)
-    local sourceRight = SafeCall(tooltip.GetRight, tooltip)
-    local sourceTop = SafeCall(tooltip.GetTop, tooltip)
+    local left = tonumber(SafeCall(tooltip.GetLeft, tooltip))
+    local right = tonumber(SafeCall(tooltip.GetRight, tooltip))
+    local top = tonumber(SafeCall(tooltip.GetTop, tooltip))
     local scale = tonumber(SafeCall(tooltip.GetEffectiveScale, tooltip)) or 1
     local parentScale = tonumber(SafeCall(UIParent.GetEffectiveScale, UIParent)) or 1
-    local parentWidth = tonumber(SafeCall(UIParent.GetWidth, UIParent))
+    local screenWidth = tonumber(SafeCall(UIParent.GetWidth, UIParent))
     if parentScale <= 0 then parentScale = 1 end
-    local ratio = scale / parentScale
-    local gap, estimatedWidth = 16, 320
-    if sourceRight and sourceTop and parentWidth
-        and sourceRight * ratio + gap + estimatedWidth <= parentWidth then
+    local ratio, gap, panelWidth = scale / parentScale, 12, 330
+    if right and top and screenWidth and right * ratio + gap + panelWidth <= screenWidth then
         frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
-            sourceRight * ratio + gap, sourceTop * ratio)
+            right * ratio + gap, top * ratio)
         lastPosition = "Right of source"
-    elseif sourceLeft and sourceTop and sourceLeft * ratio >= gap + estimatedWidth then
+    elseif left and top and left * ratio >= panelWidth + gap then
         frame:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT",
-            sourceLeft * ratio - gap, sourceTop * ratio)
+            left * ratio - gap, top * ratio)
         lastPosition = "Left of source"
     else
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        lastPosition = "Screen center fallback"
+        lastPosition = "Screen center"
     end
-    local copiedRows = {}
-    for _, row in ipairs(capture.hoverRows or {}) do
-        if row.captureLine then
-            copiedRows[#copiedRows + 1] = {
-                line = row.captureLine + 1, -- header is line 1
-                title = row.title, destinations = row.destinations,
-            }
-        end
-    end
-    if #copiedRows > 0 then S.turnInHoverRows[frame] = copiedRows end
     S.pinnedInfo = { frame = frame, itemID = capture.itemID }
     frame:Show()
-    lastPinVisible = type(frame.IsShown) ~= "function" or frame:IsShown()
+    local shown = type(frame.IsShown) ~= "function" or frame:IsShown()
     pinSuccesses = pinSuccesses + 1
     lastPinResult = "Pinned item " .. tostring(capture.itemID)
-        .. "; visible=" .. tostring(lastPinVisible)
+        .. "; visible=" .. tostring(shown)
 end
 
--- A separate, always-shown watcher owns Shift; the native source tooltip's
--- OnUpdate is not reliable when an inventory addon dismisses or replaces it.
+local function TryPinFromVisibleSource()
+    if S.pinnedInfo or not ShiftHeld() then return end
+    local candidates = { GameTooltip, ItemRefTooltip }
+    for _, source in ipairs(candidates) do
+        if source and S.qitCaptures[source]
+            and (type(source.IsShown) ~= "function" or source:IsShown()) then
+            PinCurrentItem(source)
+            return
+        end
+    end
+end
+
 local function StartPinController()
     if pinController or type(CreateFrame) ~= "function" then return end
     pinController = CreateFrame("Frame", "QITPinController")
-    local elapsedTotal = 0
+    pinController:RegisterEvent("MODIFIER_STATE_CHANGED")
+    pinController:SetScript("OnEvent", function(_, _, key)
+        if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+        if ShiftHeld() then TryPinFromVisibleSource()
+        else ReleasePinnedItem("Shift released") end
+    end)
+    -- Fallback for the Forever client or other UIs that do not fire a
+    -- modifier callback while a bag is focused; only 20 checks/second.
+    local accumulated = 0
     pinController:SetScript("OnUpdate", function(_, elapsed)
-        elapsedTotal = elapsedTotal + (tonumber(elapsed) or 0)
-        if elapsedTotal < 0.05 then return end
-        elapsedTotal = 0
+        accumulated = accumulated + (tonumber(elapsed) or 0)
+        if accumulated < 0.05 then return end
+        accumulated = 0
         if S.pinnedInfo then
-            if not ShiftHeld() then ReleasePinnedItem("Shift released")
-            else UpdateTurnInHover(S.pinnedInfo.frame) end
-            return
-        end
-        if not ShiftHeld() then return end
-        shiftSamples = shiftSamples + 1
-        if GameTooltip and S.qitCaptures[GameTooltip]
-            and (type(GameTooltip.IsShown) ~= "function" or GameTooltip:IsShown()) then
-            lastCandidateID = S.qitCaptures[GameTooltip].itemID
-            PinCurrentItem(GameTooltip)
-        elseif ItemRefTooltip and S.qitCaptures[ItemRefTooltip]
-            and (type(ItemRefTooltip.IsShown) ~= "function" or ItemRefTooltip:IsShown()) then
-            lastCandidateID = S.qitCaptures[ItemRefTooltip].itemID
-            PinCurrentItem(ItemRefTooltip)
+            if not ShiftHeld() then ReleasePinnedItem("Shift released") end
+        elseif ShiftHeld() then
+            shiftSamples = shiftSamples + 1
+            TryPinFromVisibleSource()
         end
     end)
     pinController:Show()
@@ -243,8 +208,6 @@ end
 local function PinDiagnostics()
     local source = GameTooltip
     local capture = source and S.qitCaptures[source]
-    -- History survives releasing Shift so the player can type /qit pin
-    -- normally rather than trying to hold the modifier while typing.
     return "ShiftNow=" .. tostring(ShiftHeld())
         .. " | shiftPolls=" .. tostring(shiftSamples)
         .. " | selected=" .. tostring(capture and capture.itemID or nil)
