@@ -53,7 +53,7 @@ local function SettingEnabled(key)
             or S.DB.settings.showItemIDs == true
     end
     if value == nil then return DEFAULT_SETTINGS[key] == true end
-    return value == true
+    return value == true or value == 1
 end
 
 -- One ID policy for standard named tooltip rows, independent of the bag
