@@ -8,6 +8,8 @@ on:
 jobs:
   lua:
     runs-on: ubuntu-latest
+    outputs:
+      stable: ${{ steps.build.outputs.stable }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.3
@@ -16,7 +18,19 @@ jobs:
           sudo apt-get install -y lua5.3
       - name: Parse addon source and tests
         run: |
-          luac5.3 -p QuestItemTracker/QuestItemTracker.lua
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          toc = Path('QuestItemTracker/QuestItemTracker.toc')
+          modules = [line.strip() for line in toc.read_text().splitlines()
+                     if line.strip().endswith('.lua')]
+          assert len(modules) >= 10 and modules[-1] == 'QuestItemTracker.lua', modules
+          for module in modules:
+              path = toc.parent / module
+              assert path.is_file(), f'Missing .toc Lua file: {path}'
+              subprocess.run(['luac5.3', '-p', str(path)], check=True)
+          print(f'Syntax checked {len(modules)} TOC Lua modules')
+          PY
           luac5.3 -p tests/faction_and_source_items.lua
           luac5.3 -p tests/minimap_options.lua
           luac5.3 -p tests/quest_item_pathways.lua
@@ -58,10 +72,12 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$BASE_BRANCH"
-          if git diff --name-only FETCH_HEAD HEAD | grep -Eq '^QuestItemTracker/QuestItemTracker\.(lua|toc)$'; then
+          # QITF is modular: require a version bump for ANY loaded addon Lua,
+          # not only the bootstrap file or the .toc.
+          if git diff --name-only FETCH_HEAD HEAD | grep -Eq '^QuestItemTracker/.*[.](lua|toc)' ; then
             OLD=$(git show FETCH_HEAD:QuestItemTracker/QuestItemTracker.toc | sed -n 's/^## Version: //p')
             NEW=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
-            python3 -c 'import sys; old=tuple(map(int,sys.argv[1].split("."))); new=tuple(map(int,sys.argv[2].split("."))); assert new > old, f"Addon code changed without a newer version: {old} -> {new}"; print(f"Version advanced: {old} -> {new}")' "$OLD" "$NEW"
+            python3 -c 'import re,sys; p=r"^(\d+)\.(\d+)(?:\.(\d+))?(?:-beta\.(\d+))?$"; a=re.fullmatch(p,sys.argv[1]); b=re.fullmatch(p,sys.argv[2]); assert a and b, "Invalid version"; cv=lambda m:(int(m[1]),int(m[2]),int(m[3] or 0),0 if m[4] else 1,int(m[4] or 0)); assert cv(b)>cv(a), f"Addon code changed without a newer version: {sys.argv[1]} -> {sys.argv[2]}"; print(f"Version advanced: {sys.argv[1]} -> {sys.argv[2]}")' "$OLD" "$NEW"
           fi
 
       - name: Build and check test installable folder
@@ -73,6 +89,11 @@ jobs:
           VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
           unzip -t "dist/QITForeverV${VERSION}.zip"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Upload unpacked addon as test artifact (NO nested ZIP)
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +116,7 @@ jobs:
   # A merge with the same version (docs/CI edits) is skipped automatically.
   publish_github:
     name: Publish version to GitHub + CurseForge (after passing checks)
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lua.outputs.stable == 'true' }}
     needs: lua
     runs-on: ubuntu-latest
     permissions:

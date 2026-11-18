@@ -17,7 +17,7 @@ from pathlib import Path
 ADDON = "QuestItemTracker"
 PREFIX = "QITForeverV"
 VERSIONS = re.compile(r"^## \[([^\]]+)\] - (\d{4}-\d\d-\d\d)\s*$", re.M)
-VERSION = re.compile(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
+VERSION = re.compile(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-beta\.[1-9][0-9]*)?$")
 INVALID_IN_PACKAGE = {".zip", ".rar", ".7z", ".tar", ".gz", ".tgz"}
 DEPENDENCY_URL = "https://www.curseforge.com/wow/addons/questiedb"
 
@@ -26,7 +26,7 @@ def project_version(root: Path) -> str:
     toc = (root / ADDON / f"{ADDON}.toc").read_text(encoding="utf-8")
     matches = re.findall(r"^## Version:\s*(\S+)\s*$", toc, re.M)
     if len(matches) != 1 or not VERSION.fullmatch(matches[0]):
-        raise ValueError("Expected exactly one numeric '## Version: X.Y[.Z]' in QuestItemTracker.toc")
+        raise ValueError("Expected exactly one '## Version: X.Y[.Z][-beta.N]' in QuestItemTracker.toc")
     return matches[0]
 
 
@@ -93,7 +93,17 @@ def create_package(root: Path, output: Path, version: str):
 
     # Never ship a new icon reference without its actual texture. This is
     # checked before release notes or publication, including in PR test ZIPs.
-    lua_source = (addon_dir / f"{ADDON}.lua").read_text(encoding="utf-8")
+    toc_lines = (addon_dir / f"{ADDON}.toc").read_text(encoding="utf-8").splitlines()
+    declared = [line.strip() for line in toc_lines if line.strip().endswith(".lua")]
+    if not declared or declared[-1] != f"{ADDON}.lua" or len(set(declared)) != len(declared):
+        raise ValueError("Invalid .toc Lua module order or duplicate module")
+    module_paths = []
+    for relative in declared:
+        path = (addon_dir / relative).resolve()
+        if not path.is_relative_to(addon_dir.resolve()) or not path.is_file():
+            raise ValueError(f"Missing or invalid .toc Lua module: {relative}")
+        module_paths.append(path)
+    lua_source = "\n".join(path.read_text(encoding="utf-8") for path in module_paths)
     if "QIT_BADGE_TEXTURE" in lua_source:
         for name, size in (("QITForeverBadge.tga", 32), ("QITIcon.tga", 64),
                            ("StatusCircle.tga", 32)):
@@ -155,7 +165,7 @@ def make_curseforge_metadata(version: str, changes: str) -> dict:
         "changelog": release_notes(version, changes),
         "changelogType": "markdown",
         "displayName": f"QITF-v{version} (WoW Forever)",
-        "releaseType": "release",
+        "releaseType": "beta" if "-beta." in version else "release",
         "relations": {"projects": [{"slug": "questiedb", "type": "requiredDependency"}]},
     }
     # CurseForge game version 17053 = WoW Forever 1.60.1 (Interface 16001).

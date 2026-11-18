@@ -4,6 +4,101 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7] - 2026-11-18
+
+- **Quest turn-in guidance:** Show known QuestieDB finisher NPCs/objects and zones beneath quest items linked to one or two quests. For items with three or more matching quests, hover a quest row to see its destinations in a separate bubble without overcrowding the item tooltip. Unknown destinations are omitted rather than guessed.
+- **Shift-pinned information:** Hold Shift over a quest item to open a separate, interactive **Pinned** panel beside the original tooltip; release Shift to close it. Its quest-row hover bubbles retain their own destinations. Long NPC and zone names wrap without forcing changes to the native tooltip's width.
+- **Optional coordinates and navigation:** Known turn-in coordinates can be enabled in settings (off by default). A compatible TomTom position API may provide an optional read-only **Closest** NPC/city hint for grouped faction turn-ins, only where known locations are comparable. QITF never creates or changes waypoints.
+- **Simple Show IDs control:** On the stock WoW Forever UI, one opt-in setting adds item and spell IDs to tooltips and QITF quest IDs to relevant quest descriptions. When EllesmereUI's ID handler is detected, QITF leaves ID presentation to that UI and greys out its own toggle with **Handled by UI**. QITF never rewrites, hides or resizes shared tooltip text.
+- **Refined layout:** Preserve distinct destinations when compacting matching faction donation quests; group repeatable and low-level quests without repeating status clutter. Use a weathered-copper QITF heading and soft-lavender repeatable heading alongside existing native quest difficulty and faction colors.
+- **Compatibility and maintainability:** Refactor the addon into load-ordered Core, UI, TurnIns and Tooltips modules. Add error protection for unusual tooltip frames, maintain automated regression coverage and versioned release checks. Existing quest matching, faction filtering, item retention safeguards, inventory counts and character-specific history remain intact.
+
+## [0.7-beta.11] - 2026-11-18
+
+- **Release-candidate safety review:** Keep ordinary item and spell ID appends inside the existing protected tooltip callback boundary, so errors from forbidden/unusual tooltip frames do not escape into the client. The first error is reported once rather than repeated on every hover.
+- **CI release gate:** Require a version increase when any modular addon Lua file changes, not just the bootstrap Lua and .toc. This closes a gap where future source edits could merge without advancing the version.
+- **Regression tests:** Simulate native AddLine rejecting item and spell tooltip writes; assert both callbacks remain safe and errors are reported once.
+- **No visual/behavior changes intended:** Preserve beta.10's tested stock ID switch, custom UI handoff, copper/lavender palette, independent Shift pin, and native font ownership.
+- **Release guard:** Draft branch only, no merge or publish without explicit approval.
+
+## [0.7-beta.10] - 2026-11-18
+
+- **Stock Forever Show IDs:** The existing Show IDs setting now also adds ordinary item IDs and spell IDs through standard typed tooltip callbacks, including items with no QITF quest associations. QITF retains its own quest IDs, uses no native font rewriting, and deduplicates rows on repeated tooltip callbacks.
+- **Custom UI ownership unchanged:** When EllesmereUI provides its own ID controls, QITF leaves all item/spell ID rendering to the UI and shows "Handled by UI" on the disabled option.
+- **Distinct tooltip palette:** QITF's section heading uses weathered copper (#C88B73), and REPEATABLE QUESTS uses soft lavender (#BD9CDE). No changes to item rarity/type, bag counts, quest difficulty, action status or UI border colors.
+- **Regression tests:** Check ordinary item/spell ID visibility, duplicated typed callbacks, provider handoff, reset defaults, and native-text safety.
+- **Still a draft:** No main merge or release without stock and custom Forever client verification.
+
+## [0.7-beta.9] - 2026-11-18
+
+- **Stop modifying shared tooltip fonts:** Remove QITF's external ID interception entirely. QITF no longer clears another addon's `ItemID`, `IconID`, or `SpellID` rows or alters native tooltip FontString text, height, width or alpha. This addresses the source of clipped/truncated Hearthstone and spell tooltips and remaining ID gaps; verify the actual in-game result before claiming a fix.
+- **Let a UI own its own identifiers:** Recognize EllesmereUI's publicly exposed ID-handling capability. When detected, QITF suppresses only its **own** item/quest ID additions, greys out `Show IDs` in QITF options, and labels it `Handled by UI`. The external UI continues to control all ID visibility; the user's QITF preference remains saved for stock WoW.
+- **Stock WoW compatibility:** Without a known external ID provider, QITF's Show IDs option still controls the item and quest IDs added by QITF itself. No third-party font strings are touched.
+- **Regression harness:** Simulate reused native FontStrings and assert that ordinary Hearthstone/SpellID text and line heights are untouched. Verify provider on/off handoff, disabled UI option, saved settings and that Shift pin remains independent.
+- **Safety:** Draft beta only. Game-client validation still required; do not merge to main or publish.
+
+## [0.7-beta.8] - 2026-11-18
+
+- **Forever Show IDs fix:** Checkbox handling accepts both 1/nil and true/false return values, persisting real booleans; legacy numeric settings are read safely.
+- **Unified pinned IDs:** The independent pinned panel follows the same Show IDs preference, including when it uses a QITF snapshot captured before the setting changed. Mixed status/ID lines retain status text, and quest-row hit targets retain correct indices.
+- **Pinned panel polish:** Rename the header from SHIFT PINNED to Pinned and add a quiet aged-gold frame border matching the QITF options style. No Blizzard-tooltip ownership changes.
+- **Tests:** Exercise the WoW Forever checkbox result shape, both ID toggle states on pinned information, snapshot reuse, grouped quest-row hover and border rendering.
+- **Still in draft:** Real-client verification is required for the Show IDs toggle, Hearthstone truncation, external-ID spacing and UI skin compatibility; no stable release or merge yet.
+
+## [0.7-beta.7] - 2026-11-18
+
+- **UI-agnostic tooltip lifecycle:** Handle recognizable ItemID, IconID, SpellID and related technical rows immediately when standard tooltip lines are appended. Collapse the full row rather than making it transparent; restore original line height on clear, hide or reuse. Remove the timer that repeatedly hid ID text.
+- **No forced native tooltip Show():** Item tooltips remain owned and shown by WoW or the active inventory UI. QITF only adds its quest information when there is a matching quest use.
+- **Independent pin:** Replace the second GameTooltip with a QITF-owned Frame and real interactive quest-row hit targets. The independent turn-in bubble is also an ordinary noninteractive Frame, so UI skins do not control either panel.
+- **Stronger regressions:** Test ID rows added while the original tooltip is already visible, entire row compaction, normal Hearthstone text following row reuse, native Show ownership, pinned frame type and row hover behavior.
+- **Scope:** QuestieDB, retention rules, faction filtering, saved history and existing settings remain unchanged. These fixes remain unverified in the actual Forever client and are not approved for merge.
+
+## [0.7-beta.6] - 2026-11-18
+
+- **Distinct pinned panel:** Shift-pinned QITF information appears alongside the source tooltip instead of directly covering it, with a screen-center fallback and screen clamping for difficult edges.
+- **Hover interaction:** Keep the pinned information mouse-interactive and its turn-in destination bubble mouse-transparent so the two tooltips do not compete for mouse focus.
+- **Compact spacing:** Remove QITF's extra blank separator line from both ordinary tooltips and pinned information.
+- **Useful Shift diagnostics:** `/qit pin` retains successful capture, positioning, and release details after Shift has been released. Count only real pin captures, not hundreds of failed background polls; remove the redundant tooltip OnUpdate pin attempt.
+- **Test build:** Mock checks cover positioning, mouse behavior, and diagnostics after release; actual WoW Forever validation remains required. No release or main merge.
+
+## [0.7-beta.5] - 2026-11-18
+
+- **One ID switch:** Consolidate three overlapping ID settings into one Show IDs toggle. It covers QITF-generated identifiers and recognized technical ID rows from the standard GameTooltip.
+- **Normal item safety:** Never alter, blank, or resize Blizzard's shared tooltip font strings to hide IDs. Restore original font-string alpha when tooltips are recycled. Add Hearthstone regression coverage.
+- **Shift ownership:** Copy only QITF-authored quest information to the independent pinned panel. Move the Shift watcher out of the bootstrap and allow mouse-hover over pinned quest rows.
+- **Simplified settings:** Faction, IDs, tooltip presentation, and turn-in details each have an appropriate section. Remove the redundant future-status label switch.
+- **Testing only:** Shift and EllesmereUI compatibility still require verification in the actual WoW Forever client. Do not merge yet.
+
+## [0.7-beta.4] - 2026-11-17
+
+- **Architectural cleanup:** Split the monolithic addon into ordered Core, UI, TurnIns, and Tooltips modules. The main Lua file is now a small bootstrap and event coordinator, not a feature dumping ground.
+- **Shared state and functions:** Cross-module dependencies use the explicitly owned addon namespace, with one shared API for reusable operations. Keep quest history/retention logic, tooltip decoration, location decisions, and UI presentation in their respective modules.
+- **Load order is tested:** Standalone mock tests load the .toc files in actual WoW order, and CI syntax checks every referenced Lua file. The release builder validates declared module files.
+- **Shift investigation:** Added `/qit pin` to report Shift state, selected item, pin attempts and the last capture status. Shift remains the default; no unverified alternate modifier. Pinning still requires confirmation in the actual client before release.
+- **Stable UI preserved:** No global width overrides for the stock UI. EllesmereUI-specific clipping remains a separate compatibility investigation.
+- **Test build only:** `0.7-beta.4`; no merge or public release.
+
+## [0.7-beta.3] - 2026-11-17
+
+- **Shift pin reliability:** Move Shift-pinned information management onto an independent always-active controller; do not rely on the bag tooltip's own OnUpdate script or a pinned GameTooltip's OnUpdate. Capture immediately if Shift is already held during an item hover, and release the saved panel when Shift is lifted.
+- **Readability for long NPC/zone names:** Wrap lengthy turn-in destinations at the NPC / zone boundary so a full zone like The Barrens displays on its own line rather than truncating to an ellipsis.
+- **Pinned visual feedback:** Show a subdued SHIFT PINNED indicator on the separate QITF panel. Keep the core tooltip unchanged unless the player holds Shift.
+- **Beta test revision:** `0.7-beta.3`; retains optional read-only navigation integration, turn-in settings, quest grouping and faction filtering.
+
+## [0.7-beta.2] - 2026-11-17
+
+- **Shift pins item context:** Holding Shift while hovering a quest item opens a persistent copy of QITF's information. Moving over quest text or another bag slot does not switch the pinned item; releasing Shift closes it. Row-hover bubbles on busy items still show the individual turn-in NPCs and cities.
+- **Optional closest faction turn-in:** When a compatible TomTom + read-only geographic position API is available, grouped faction donation quests can show one quiet `Closest: NPC — City` line. The calculation compares known QuestieDB finisher spawn positions on the player's current continent; incomplete or incomparable locations are omitted. No waypoint is created or changed.
+- **No new requirements:** Normal NPC/zone turn-in lines, grouping, and optional coordinate settings remain unchanged without navigation integration.
+- **Version increment:** Next tester carries `0.7-beta.2` in the TOC, in-game menu, changelog, and test artifact.
+
+## [0.7-beta.1] - 2026-11-17
+
+- **Turn-in guidance (beta):** Show the known QuestieDB quest-finisher NPC/object and zone beneath a quest when the item matches one or two quests. For three or more matches, keep the main tooltip clean and expose turn-ins in a side bubble when hovering the quest row, with a Shift-hover fallback for bag UIs that dismiss the tooltip on mouse-leave. No waypoints, quest tracking, or guessed locations.
+- **Optional coordinates:** Add a checkbox for one known turn-in coordinate, OFF by default. The NPC/zone detail is ON by default and can be disabled.
+- **Faction quest compaction:** Retain the compact `(5 quests)` row and preserve all distinct turn-in destinations in its hover bubble, without implying they share one NPC.
+- **Prerelease versioning:** Display `0.7-beta.1` in the game and beta build name, preserving a clean upgrade path to `0.7`. This is a test build only, not a public release.
+
 ## [0.6] - 2026-11-14
 
 - **Clearer item guidance:** Highlight the KEEP / NEEDED / SAFE TO DELETE decision while displaying its explanation in quieter, readable ivory.

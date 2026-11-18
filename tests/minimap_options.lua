@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.5' end
+  if key=='Version' then return '0.7' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -36,24 +36,66 @@ _G.GetQuestDifficultyColor=function(level)
   if level == 6 then return {r=0.55,g=0.55,b=0.55} end
   return {r=1,g=0.5,b=0}
 end
-_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone'})[id] end}
+_G.C_Item={GetItemName=function(id) return ({[4894]='Plainstrider Kidney',[6948]='Hearthstone',[43000]='Single Turn-in Item',[43001]='Long Turn-in Item'})[id] end}
 _G.GetItemInfo=function(id) return C_Item.GetItemName(id) end
-_G.LibQuestieDB={RequireContract=function(v) return v==4 end}
+_G.LibQuestieDB={
+  RequireContract=function(v) return v==4 end,
+  Support={Get=function(name)
+    assert(name=='ZoneDB')
+    return {private={areaIdToUiMapId='return {[12]=1429,[1637]=1454,[1519]=1453}'}}
+  end},
+}
 _G.QuestDB={
-  GetAllIds=function() return {821,700,701,901,902,1001,1002,1003,1004,1005} end,
+  GetAllIds=function() return {821,822,700,701,901,902,1001,1002,1003,1004,1005} end,
   name=function(id)
     return ({[700]="Grey Forager",[701]="Grey Farmer",[901]="Repeatable Hunt",
       [902]="Repeatable Offering",[821]="Chen's Empty Keg",
+      [822]="Long Turn-In",
       [1001]="A Donation of Wool",[1002]="A Donation of Wool",
       [1003]="A Donation of Wool",[1004]="A Donation of Wool",
       [1005]="A Donation of Wool"})[id]
   end,
   questLevel=function(id) return (id>=1001 and id<=1005) and 60 or ((id==700 or id==701) and 6 or 15) end,
   specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
-  objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
+  objectives=function(id)
+    local items={{4894,'Plainstrider Kidney',id==700 and 2 or 5}}
+    if id==821 then items[#items+1]={43000,'Single Turn-in Item',1} end
+    if id==822 then items[#items+1]={43001,'Long Turn-in Item',1} end
+    return {nil,nil,items}
+  end,
   requiredSourceItems=function() return nil end,
+  finishedBy=function(id)
+    if id>=1001 and id<=1005 then return {{3000+id-1000}} end
+    if id==821 then return {{2001}} end
+    if id==822 then return {{2002}} end
+  end,
 }
-_G.ItemDB={relatedQuests=function(id) if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end end}
+_G.ItemDB={relatedQuests=function(id)
+  if id==4894 then return {821,700,701,901,902,1001,1002,1003,1004,1005} end
+  if id==43000 then return {821} end
+  if id==43001 then return {822} end
+end}
+_G.C_Map={GetAreaInfo=function(area) return ({[12]='Elwynn Forest',[17]='The Barrens',[1637]='Orgrimmar',[1519]='Stormwind City'})[area] end}
+_G.NpcDB={
+  name=function(id)
+    if id==2001 then return 'Brewmaster Test' end
+    if id==2002 then return 'Brewmaster Drohn' end
+    if id>=3001 and id<=3005 then return 'Quartermaster '..(id-3000) end
+  end,
+  zoneID=function(id)
+    if id==2001 then return 12 end
+    if id==2002 then return 17 end
+    return 1637
+  end,
+  spawns=function(id)
+    if id==2001 then return {[12]={{42.5,67.2}}} end
+    if id==2002 then return {[17]={{40.0,60.0}}} end
+    if id>=3001 and id<=3005 then
+      local n=id-3000
+      return {[1637]={{10+15*n,10+15*n}}}
+    end
+  end,
+}
 _G.C_QuestLog={
   GetNumQuestLogEntries=function() return 0 end,
   GetInfo=function() end,
@@ -87,11 +129,15 @@ local function MockFrame(kind,name,parent)
     end
   end
   function f:GetScript(event) return self.scripts[event] end
+  function f:GetName() return self.name end
   function f:Show() self.shown=true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
   function f:Hide() self.shown=false end
   function f:IsShown() return self.shown end
   function f:SetChecked(v) self.checked=v end
   function f:GetChecked() return self.checked end
+  function f:Disable() self.disabled=true end
+  function f:Enable() self.disabled=false end
+  function f:IsEnabled() return not self.disabled end
   function f:SetText(v) self.text=v end
   function f:SetSize(w,h) self.w=w; self.h=h end
   function f:SetHitRectInsets(...) self.hitInsets={...} end
@@ -101,8 +147,9 @@ local function MockFrame(kind,name,parent)
   function f:StartMoving() self.moving=true end
   function f:StopMovingOrSizing() self.moving=false end
   function f:SetFrameStrata() end
+  function f:SetFrameLevel(level) self.level=level end
   function f:SetClampedToScreen() end
-  function f:EnableMouse() end
+  function f:EnableMouse(enabled) self.mouseEnabled=enabled end
   function f:SetMovable() end
   function f:RegisterForDrag() end
   function f:RegisterForClicks() end
@@ -116,6 +163,25 @@ local function MockFrame(kind,name,parent)
   function f:SetTexCoord() end
   function f:CreateTexture() return MockFrame('Texture',nil,self) end
   function f:CreateFontString() return MockFrame('FontString',nil,self) end
+  if kind=='GameTooltip' then
+    f.lines={}
+    function f:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor end
+    function f:AddLine(line)
+      self.lines[#self.lines+1]=line
+      local index=#self.lines
+      _G[name..'TextLeft'..index]={
+        GetText=function() return line end,
+        GetTop=function() return 600-(index-1)*16 end,
+        GetBottom=function() return 586-(index-1)*16 end,
+      }
+    end
+    function f:ClearLines() self.lines={} end
+    function f:NumLines() return #self.lines end
+    function f:GetLeft() return 200 end
+    function f:GetRight() return 520 end
+    function f:GetEffectiveScale() return 1 end
+    function f:IsShown() return self.shown end
+  end
   frames[#frames+1]=f
   return f
 end
@@ -130,26 +196,53 @@ function Minimap:GetEffectiveScale() return 1 end
 local minimapShape='ROUND'
 _G.GetMinimapShape=function() return minimapShape end
 local cursorX,cursorY=590,540
+local shiftDown=false
+_G.IsShiftKeyDown=function() return shiftDown end
 _G.GetCursorPosition=function() return cursorX,cursorY end
 local typedHook
-_G.Enum={TooltipDataType={Item=222}}
-_G.TooltipDataProcessor={AddTooltipPostCall=function(_,fn) typedHook=fn end}
+local typedHooks={}
+_G.Enum={TooltipDataType={Item=222,Spell=333}}
+_G.TooltipDataProcessor={AddTooltipPostCall=function(kind,fn)
+  typedHooks[kind]=fn
+  if kind==222 then typedHook=fn end
+end}
 _G.GameTooltip={lines={},scripts={}}
+function GameTooltip:GetLeft() return 200 end
+function GameTooltip:GetTop() return 600 end
+function GameTooltip:GetRight() return 520 end
+function GameTooltip:GetEffectiveScale() return 1 end
+function GameTooltip:IsShown() return self.shown end
+function UIParent:GetWidth() return 1200 end
+function UIParent:GetEffectiveScale() return 1 end
 function GameTooltip:HookScript(event,fn) self.scripts[event]=fn end
-local function tooltipFontString(value)
-  return {text=value,height=14,
+local nativeHeightChanges=0
+local function tooltipFontString(value,index)
+  return {text=value,index=index,height=14,
     GetText=function(self)return self.text end,
     SetText=function(self,v)self.text=v end,
     GetHeight=function(self)return self.height end,
-    SetHeight=function(self,v)self.height=v end,
+    SetHeight=function(self,v)nativeHeightChanges=nativeHeightChanges+1;self.height=v end,
+    GetAlpha=function(self)return self.alpha or 1 end,
+    SetAlpha=function(self,v)self.alpha=v end,
+    GetTop=function(self)return 600-(self.index-1)*16 end,
+    GetBottom=function(self)return 586-(self.index-1)*16 end,
   }
 end
 function GameTooltip:GetName()return "GameTooltip" end
 function GameTooltip:NumLines()return #self.lines end
 function GameTooltip:AddLine(line)
   self.lines[#self.lines+1]=line
-  _G["GameTooltipTextLeft"..#self.lines]=tooltipFontString(line)
-  _G["GameTooltipTextRight"..#self.lines]=tooltipFontString("")
+  local index=#self.lines
+  -- Reuse named FontStrings, as WoW Forever does when a tooltip changes
+  -- from an ID-heavy item to a regular spell or Hearthstone.
+  local left=_G["GameTooltipTextLeft"..index]
+  local right=_G["GameTooltipTextRight"..index]
+  if left then left:SetText(line) else
+    _G["GameTooltipTextLeft"..index]=tooltipFontString(line,index)
+  end
+  if right then right:SetText("") else
+    _G["GameTooltipTextRight"..index]=tooltipFontString("",index)
+  end
 end
 function GameTooltip:AddDoubleLine(left,right)
   self:AddLine(left)
@@ -168,7 +261,7 @@ _G.hooksecurefunc=function(t,method,hook)
   local fn=t[method]
   t[method]=function(self,...) local r=fn(self,...);hook(self,...);return r end
 end
-local chunk=assert(loadfile('QuestItemTracker/QuestItemTracker.lua')); chunk('QuestItemTracker')
+local loadQIT = dofile('tests/load_addon.lua'); loadQIT()
 local main
 for _, f in ipairs(frames) do if f.events.PLAYER_LOGIN then main=f;break end end
 assert(main,'main event frame absent')
@@ -181,7 +274,8 @@ for _, worker in ipairs(frames) do
     end
   end
 end
-assert(typedHook,'typed tooltip hook not installed')
+assert(typedHook and typedHooks[333],
+  'both item and spell data hooks must be installed on Forever')
 local button
 for _, f in ipairs(frames) do if f.name=='QITMinimapButton' then button=f end end
 assert(button,'minimap bubble not created at login')
@@ -328,7 +422,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.5' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -344,23 +438,23 @@ end
 assert(matchedIcon,'minimap button must use the approved QITF FOREVER badge')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
-assert(#checks==7,'expected seven settings switches')
+assert(#checks==6,'expected six settings switches')
 assert(checks[1]:GetChecked(),'faction filter should be enabled by default')
-assert(not checks[7]:GetChecked(),'future labels must be hidden by default')
-assert(not checks[2]:GetChecked(),'other addon IDs must stay visible by default')
-assert(checks[3]:GetChecked()==false and checks[4]:GetChecked()==false,'QIT IDs must be off by default')
-assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown must be on by default')
+assert(not checks[2]:GetChecked(),'IDs must be hidden by default')
+assert(checks[3]:GetChecked() and checks[4]:GetChecked(),
+  'levels and bag/bank counts should be enabled by default')
+assert(checks[5]:GetChecked(),'turn-in name and zone should be on by default')
+assert(not checks[6]:GetChecked(),'turn-in coordinates should be off by default')
 
 -- Every setting explains its purpose when hovered, without technical jargon.
 -- The expanded hit area lets players hover (and click) on the label as well.
 local expectedHelps={
-  {'Only show my faction quests','opposite faction'},
-  {'Hide IDs from other addons','off by default'},
-  {'Show QITF quest IDs','quest ID'},
-  {'Show QITF item IDs','item'},
-  {'Show quest levels','Level 60'},
+  {'Only show my faction quests','other faction'},
+  {'Show IDs','item and spell IDs'},
+  {'Show quest levels','quest'},
   {'Show bag / bank breakdown','bags and bank'},
-  {'Show future quest labels','KEEP or NEEDED'},
+  {'Show turn-in NPC and zone','quest-finisher'},
+  {'Show turn-in coordinates','Off by default'},
 }
 for i, expected in ipairs(expectedHelps) do
   local check=checks[i]
@@ -386,39 +480,316 @@ local function tooltip(id)
   GameTooltip:ClearLines()
   if GameTooltip.scripts.OnTooltipCleared then GameTooltip.scripts.OnTooltipCleared(GameTooltip) end
   typedHook(GameTooltip,{id=id,type=222})
+  GameTooltip:Show() -- the WoW UI, not QITF, owns visibility
   return table.concat(GameTooltip.lines,'\n')
 end
--- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
-local function withExternalIDs()
+-- One relevant quest should show a quiet inline location.
+local singleTurnIn=tooltip(43000)
+assert(singleTurnIn:find('Turn in:',1,true),'single quest should show inline turn-in')
+assert(singleTurnIn:find('Brewmaster Test',1,true)
+  and singleTurnIn:find('Elwynn Forest',1,true),
+  'single quest must show complete finisher name and zone')
+assert(not singleTurnIn:find('(42.5, 67.2)',1,true),
+  'turn-in coordinates should be off by default')
+checks[6]:SetChecked(true); checks[6].scripts.OnClick(checks[6])
+assert(tooltip(43000):find('(42.5, 67.2)',1,true),
+  'turn-in coordinates should appear when enabled')
+checks[6]:SetChecked(false); checks[6].scripts.OnClick(checks[6])
+checks[5]:SetChecked(false); checks[5].scripts.OnClick(checks[5])
+assert(not tooltip(43000):find('Turn in:',1,true),
+  'turn-in details toggle must hide name and zone')
+checks[5]:SetChecked(true); checks[5].scripts.OnClick(checks[5])
+
+
+-- Long names must wrap at the NPC/zone boundary instead of ellipsizing
+-- The Barrens; this does not depend on the source bag tooltip width.
+local longTurnIn=tooltip(43001)
+assert(longTurnIn:find('Brewmaster Drohn',1,true)
+   and longTurnIn:find('The Barrens',1,true),
+   'long turn-in location must include complete NPC and zone names')
+assert(not longTurnIn:find('Brewmaster Drohn — The Barrens',1,true),
+   'long NPC/zone line should break cleanly after the NPC')
+local sawNpcLine, sawZoneLine=false,false
+for _, line in ipairs(GameTooltip.lines) do
+  if line:find('Brewmaster Drohn',1,true) then sawNpcLine=true end
+  if line:find('The Barrens',1,true) then
+    sawZoneLine=true
+    assert(not line:find('Brewmaster Drohn',1,true),
+      'The Barrens must be on a separate clean line')
+  end
+end
+assert(sawNpcLine and sawZoneLine,'long turn-in wrapping lines missing')
+
+-- Three or more quest associations: destinations live in a side bubble,
+-- not stacked on the item tooltip. The five donation quests stay grouped.
+local busy=tooltip(4894)
+assert(not busy:find('Turn in:',1,true),
+  'crowded item must not add inline turn-in lines')
+assert(busy:find('(5 quests)',1,true),'five faction quests should stay collapsed')
+assert(not busy:find('Closest:',1,true),
+  'no installed navigation addon must mean no nearest turn-in hint')
+local donationLine
+for index, line in ipairs(GameTooltip.lines) do
+  if line:find('A Donation of Wool',1,true) then donationLine=index; break end
+end
+assert(donationLine,'donation row missing from crowded tooltip')
+cursorX,cursorY=300,593-(donationLine-1)*16
+assert(type(GameTooltip.scripts.OnUpdate)=='function','turn-in hover updater not installed')
+GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+local bubble
+for _,f in ipairs(frames) do
+  if f.name=='QITTurnInHoverBubble' then bubble=f end
+end
+assert(bubble and bubble.shown,'hovering a crowded quest row must show a side bubble')
+local bubbleText=table.concat(bubble.qitLines,' ')
+for i=1,5 do
+  assert(bubbleText:find('Quartermaster '..i,1,true),
+    'collapsed faction row lost one of its turn-in locations')
+end
+cursorX,cursorY=100,500
+GameTooltip.scripts.OnUpdate(GameTooltip,0.2)
+assert(not bubble.shown,'side bubble must hide after leaving quest row')
+
+
+-- A compatible navigation addon may add ONE closest suggestion using read-only
+-- position and quest-finisher spawn data, not any waypoint side effects.
+local hbd={
+  GetPlayerWorldPosition=function() return 400,400,1 end,
+  GetWorldCoordinatesFromZone=function(_,x,y,map)
+    if map==1454 then return x*1000,y*1000,1 end
+  end,
+}
+_G.LibStub=function(name,optional)
+  if name=='HereBeDragons-2.0' then return hbd end
+end
+_G.TomTom={
+  GetCurrentPlayerPosition=function() return 1454,0.4,0.4 end,
+  AddWaypoint=function() error('QIT must never create a waypoint') end,
+  SetCrazyArrow=function() error('QIT must never change navigation') end,
+}
+local withNavigation=tooltip(4894)
+assert(withNavigation:find('Closest:',1,true),
+  'TomTom with usable world coordinates should show a nearest hint')
+assert(withNavigation:find('Quartermaster 2 — Orgrimmar',1,true),
+  'nearest hint should choose the actually nearest known NPC and city')
+assert(not withNavigation:find('Turn in:',1,true),
+  'nearest hint must not expand the busy tooltip')
+_G.TomTom=nil
+assert(not tooltip(4894):find('Closest:',1,true),
+  'removing the navigation provider should remove the nearest hint')
+_G.LibStub=nil
+
+-- Shift pins the original item information independently of the bag tooltip.
+local pinController
+for _, f in ipairs(frames) do
+  if f.name == 'QITPinController' then pinController = f end
+end
+assert(pinController, 'independent pin controller must be installed')
+-- Forever may return 1/nil from GetChecked. Test the real checkbox path
+-- instead of only writing SavedVariables by hand.
+checks[2].GetChecked=function(self) return self.checked and 1 or nil end
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==true,
+  'Forever checked value 1 must save Show IDs as true')
+local beforePin=tooltip(4894)
+assert(beforePin:find('Item ID: 4894',1,true)
+    and beforePin:find('Quest ID: 821',1,true),
+  'Show IDs on must render QITF identifiers')
+-- The original tooltip was captured while IDs were ON. Switching them OFF
+-- before Shift pinning must still remove the technical ID rows in the pin.
+checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==false,
+  'Forever unchecked value nil must save Show IDs as false')
+-- Simulate a custom bag UI whose native tooltip stops receiving OnUpdate.
+local oldTooltipUpdate=GameTooltip.scripts.OnUpdate
+GameTooltip.scripts.OnUpdate=nil
+shiftDown=true
+pinController.scripts.OnUpdate(pinController,0.15)
+local pinned
+for _,f in ipairs(frames) do
+  if f.name=='QITPinnedItemInfo' then pinned=f end
+end
+assert(pinned and pinned:IsShown(),'Shift must create and show an independent info panel')
+assert(pinned.mouseEnabled==true,
+  'pinned panel must accept mouse for quest-row hover')
+assert(bubble.mouseEnabled==false,
+  'destination bubble must not steal hover from pinned quest rows')
+local pinPoint=pinned.points[#pinned.points]
+assert(pinPoint and pinPoint[2]==UIParent
+    and (pinPoint[1]=='TOPLEFT' or pinPoint[1]=='TOPRIGHT'),
+    'pin must anchor independently alongside the source tooltip')
+assert(pinPoint[4]~=200,
+    'pin must not overlap the original tooltip')
+assert(pinned.kind=='Frame', 'pin must be a plain independent Frame, not GameTooltip')
+assert(pinned.qitLines[1]:find('Pinned',1,true)
+   and not pinned.qitLines[1]:find('SHIFT PINNED',1,true),
+   'pin should use the concise Pinned label')
+local trimCount=0
+for _, f in ipairs(frames) do
+  if f.kind=='Texture' and f.parent==pinned and f.color
+    and f.color[1]>0.45 and f.color[1]>f.color[2]
+    and f.color[2]>f.color[3] then
+      trimCount=trimCount+1
+  end
+end
+assert(trimCount==4,'pinned panel should have four aged-gold border edges')
+local snapshot=table.concat(pinned.qitLines,'\n')
+assert(not snapshot:find('Item ID:',1,true)
+   and not snapshot:find('Quest ID:',1,true),
+   'Show IDs off must strip QITF item/quest IDs even from older captures')
+assert(snapshot:find('A Donation of Wool',1,true)
+  and snapshot:find('(5 quests)',1,true),
+  'pinned panel must preserve the original grouped quest information')
+-- Simulate the normal bag tooltip closing and being reused for another item.
+GameTooltip:Hide()
+if GameTooltip.scripts.OnHide then GameTooltip.scripts.OnHide(GameTooltip) end
+tooltip(43000)
+assert(pinned:IsShown() and table.concat(pinned.qitLines,'\n')==snapshot,
+  'moving to another bag item must not replace the Shift-pinned item')
+local groupedHit
+for _, f in ipairs(frames) do
+  if f.parent==pinned and f.scripts.OnEnter then
+    assert(f.mouseEnabled==true,'pinned row must accept mouse input')
+    f.scripts.OnEnter(f)
+    local detail=bubble.qitLines and table.concat(bubble.qitLines,' ') or ''
+    if bubble.shown and detail:find('Quartermaster 1',1,true)
+      and detail:find('Quartermaster 5',1,true) then
+      groupedHit=f
+      break
+    end
+    f.scripts.OnLeave(f)
+  end
+end
+assert(groupedHit,'grouped donation quest must have a usable hit target and all finishers')
+groupedHit.scripts.OnLeave(groupedHit)
+assert(not bubble.shown,'leaving pinned quest row must close bubble')
+shiftDown=false
+pinController.scripts.OnUpdate(pinController,0.2)
+assert(not pinned:IsShown() and not bubble.shown,
+  'releasing Shift must close pinned panel and its side bubble')
+-- A player enters the diagnostic command only AFTER releasing Shift.
+local pinOutput
+local oldPrint=DEFAULT_CHAT_FRAME.AddMessage
+DEFAULT_CHAT_FRAME.AddMessage=function(_,line) pinOutput=line end
+SlashCmdList.QUESTITEMTRACKER('pin')
+DEFAULT_CHAT_FRAME.AddMessage=oldPrint
+assert(pinOutput and pinOutput:find('successes=1',1,true)
+  and pinOutput:find('released=Shift released',1,true)
+  and pinOutput:find('last=Pinned item 4894',1,true),
+  '/qit pin must preserve the last pin result after Shift is released')
+cursorX,cursorY=100,500
+-- Shift already held BEFORE item hover must pin on the item callback too.
+-- When Show IDs is enabled, the pinned view must include those same IDs.
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
+shiftDown=true
+tooltip(4894)
+assert(pinned:IsShown(),'holding Shift before hover must pin immediately')
+local pinWithIDs=table.concat(pinned.qitLines,'\n')
+assert(pinWithIDs:find('Item ID: 4894',1,true)
+   and pinWithIDs:find('Quest ID: 821',1,true),
+   'Show IDs on must show item and quest IDs inside the pinned panel')
+shiftDown=false
+pinController.scripts.OnUpdate(pinController,0.2)
+assert(not pinned:IsShown(),'release after immediate pin must work')
+checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
+GameTooltip.scripts.OnUpdate=oldTooltipUpdate
+
+-- The active UI owns any technical-ID rows that it adds. QITF's
+-- standard hooks must NEVER mutate its named tooltip FontStrings.
+-- Verify text, height and reuse without requiring an external provider.
+local function withExternalIDs(itemID)
   GameTooltip:ClearLines()
-  GameTooltip:AddDoubleLine('ItemID','4894')
-  GameTooltip:AddDoubleLine('IconID','132919')
-  typedHook(GameTooltip,{id=4894,type=222})
+  if GameTooltip.scripts.OnTooltipCleared then
+    GameTooltip.scripts.OnTooltipCleared(GameTooltip)
+  end
+  GameTooltip:AddDoubleLine('ItemID', tostring(itemID))
+  GameTooltip:AddDoubleLine('IconID', '132919')
+  typedHook(GameTooltip,{id=itemID,type=222})
+  GameTooltip:Show()
   return _G.GameTooltipTextLeft1,_G.GameTooltipTextRight1,
          _G.GameTooltipTextLeft2,_G.GameTooltipTextRight2
 end
-local a,b,c,d=withExternalIDs()
-assert(a:GetText()=='ItemID' and b:GetText()=='4894' and c:GetText()=='IconID' and d:GetText()=='132919',
-  'external IDs must remain visible when suppression is off')
+local beforeNativeHeight=nativeHeightChanges
+local a,b,c,d=withExternalIDs(4894)
+assert(a:GetText()=='ItemID' and b:GetText()=='4894'
+  and c:GetText()=='IconID' and d:GetText()=='132919',
+  'QITF must not edit identifier rows owned by another UI')
+assert(a:GetHeight()==14 and b:GetHeight()==14
+  and c:GetHeight()==14 and d:GetHeight()==14,
+  'external ID fontstrings must retain native height')
+GameTooltip:Show()
+GameTooltip:AddDoubleLine('SpellID','20484')
+local index=GameTooltip:NumLines()
+assert(_G['GameTooltipTextLeft'..index]:GetText()=='SpellID'
+  and _G['GameTooltipTextRight'..index]:GetText()=='20484',
+  'QITF must not rewrite spell/action tooltip IDs')
+-- Recycle the very same named fontstrings for ordinary prose.
+GameTooltip:ClearLines()
+if GameTooltip.scripts.OnTooltipCleared then
+  GameTooltip.scripts.OnTooltipCleared(GameTooltip)
+end
+GameTooltip:AddLine('Hearthstone')
+GameTooltip:AddLine('Use: Returns you to The Crossroads.')
+GameTooltip:AddDoubleLine('ItemID','6948')
+typedHook(GameTooltip,{id=6948,type=222})
+GameTooltip:Show()
+assert(_G.GameTooltipTextLeft2:GetText()=='Use: Returns you to The Crossroads.'
+  and _G.GameTooltipTextLeft2:GetHeight()==14,
+  'reused Hearthstone description must remain untouched and full-height')
+assert(_G.GameTooltipTextLeft3:GetText()=='ItemID'
+  and _G.GameTooltipTextRight3:GetText()=='6948',
+  'QITF must not erase external item identifiers')
+assert(nativeHeightChanges==beforeNativeHeight,
+  'QITF must not call SetHeight on shared tooltip FontStrings')
+
 checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
-a,b,c,d=withExternalIDs()
-assert(a:GetText()=='' and b:GetText()=='' and c:GetText()=='' and d:GetText()=='',
-  'opt-in suppression must hide both sides of external metadata rows')
-assert(a:GetHeight()==0 and c:GetHeight()==0,'hidden ID rows must not occupy full height')
--- QIT's own IDs are independently controlled, even while external IDs are hidden.
-checks[3]:SetChecked(true);checks[3].scripts.OnClick(checks[3])
-checks[4]:SetChecked(true);checks[4].scripts.OnClick(checks[4])
-a,b,c,d=withExternalIDs()
-local ownIDs=table.concat(GameTooltip.lines,'\\n')
-assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID was suppressed')
-assert(ownIDs:find('Quest ID: 821',1,true),'QIT quest ID was suppressed')
-assert(a:GetText()=='' and c:GetText()=='','external metadata visible while suppression enabled')
-checks[3]:SetChecked(false);checks[3].scripts.OnClick(checks[3])
-checks[4]:SetChecked(false);checks[4].scripts.OnClick(checks[4])
+a,b,c,d=withExternalIDs(4894)
+assert(a:GetText()=='ItemID' and b:GetText()=='4894'
+  and c:GetText()=='IconID' and d:GetText()=='132919',
+  'showing QITF IDs must not alter external identifiers')
+assert(a:GetHeight()==14 and c:GetHeight()==14,
+  'showing QITF IDs must not alter native font height')
+local ownIDs=table.concat(GameTooltip.lines,'\n')
+assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID did not follow unified option')
+assert(ownIDs:find('Quest ID: 821',1,true),'quest ID did not follow unified option')
 checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
-a,b,c,d=withExternalIDs()
-assert(a:GetText()=='ItemID' and c:GetText()=='IconID',
-  'turning off external suppression must leave the other addon metadata alone')
+-- The UI-provider contract: an exposed ID-handling capability gets the
+-- entire ID presentation, QITF's option is disabled, and no native tooltip
+-- line is edited. Removing that UI restores the player's saved QITF choice.
+_G.EllesmereUI = {SpellIDOn=function() return true end}
+panel:Hide();panel:Show()
+assert(checks[2]:IsEnabled()==false and not checks[2]:GetChecked(),
+  'external ID provider must disable and uncheck QITF Show IDs')
+local handledLabel
+for _, f in ipairs(frames) do
+  if f.kind=='FontString' and f.parent==panel
+     and f.text and f.text:find('Handled by UI',1,true) then
+    handledLabel=f;break
+  end
+end
+assert(handledLabel,'external ID provider must be indicated as Handled by UI')
+checks[2]:SetChecked(true)
+checks[2].scripts.OnClick(checks[2])
+assert(QuestItemTrackerDB.settings.showIDs==false,
+  'a disabled Show IDs checkbox must not change saved preferences')
+local externalBefore=nativeHeightChanges
+withExternalIDs(4894)
+local qitExternal=table.concat(GameTooltip.lines,'\n')
+assert(not qitExternal:find('Item ID: 4894',1,true)
+  and not qitExternal:find('Quest ID: 821',1,true),
+  'QITF must not add duplicate IDs while a UI provider owns ID display')
+assert(nativeHeightChanges==externalBefore
+  and _G.GameTooltipTextLeft1:GetText()=='ItemID',
+  'an external ID provider must retain its untouched tooltip rows')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'a UI provider must disable QITF-generated stock spell identifiers')
+_G.EllesmereUI=nil
+panel:Hide();panel:Show()
+assert(checks[2]:IsEnabled()==true and not checks[2]:GetChecked(),
+  'stock UI must restore working QITF ID switch and saved state')
 -- This toggle changes only tooltip presentation, never quest-matching logic.
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
@@ -430,6 +801,8 @@ assert(clean:find('(5 quests)',1,true),'five identical donation quests must be c
 assert(not clean:find('A Donation of Wool',clean:find('A Donation of Wool',1,true)+1,true),
   'duplicate donation rows were not compacted')
 assert(clean:find('REPEATABLE QUESTS',1,true),'repeatable group heading missing')
+assert(clean:find('|cffc88b73Quest Item Tracker Forever|r',1,true),
+  'QITF header must use weathered copper, not crafting-reagent blue')
 assert(clean:find('Grey Forager',1,true) and clean:find('Grey Farmer',1,true),
   'both low-level quest names must remain visible')
 assert(clean:find('Repeatable Hunt',1,true) and clean:find('Repeatable Offering',1,true),
@@ -462,33 +835,57 @@ assert(clean:find('Have 5 / Need 5',1,true),'Have/Need was lost')
 assert(clean:find('(Level 15)',1,true),'quest level should appear by default')
 assert(not clean:find('Quest ID:',1,true) and not clean:find('Item ID:',1,true),'IDs visible by default')
 assert(clean:find('Bags: 3 | Bank: 2',1,true),'default bank counts missing')
-assert(tooltip(6948)=='','ordinary item was decorated')
-checks[7]:SetChecked(true);checks[7].scripts.OnClick(checks[7])
-local detailedFuture=tooltip(4894)
-assert(detailedFuture:find('FUTURE QUEST',1,true),'optional future quest status not restored')
-assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:find('FUTURE USE · GREY QUEST',1,true),
-  'grey quests should stay grouped even when detailed status labels are enabled')
-assert(detailedFuture:find('REPEATABLE QUESTS',1,true) and occurrences(detailedFuture,'REPEATABLE QUEST')==1,
-  'repeatable heading should not duplicate its per-quest label in detailed mode')
-assert(detailedFuture:find('No current quest needs',1,true),'optional future footer not restored')
-checks[7]:SetChecked(false);checks[7].scripts.OnClick(checks[7])
-assert(not tooltip(4894):find('FUTURE QUEST',1,true),'future status does not turn off')
-for _,i in ipairs({3,4}) do
-  checks[i]:SetChecked(true);checks[i].scripts.OnClick(checks[i])
-end
+assert(tooltip(6948)=='','ordinary item must not have IDs when off')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'Show IDs off must not add a spell ID')
+assert(not tooltip(4894):find('FUTURE QUEST',1,true),
+  'redundant future quest labels should remain hidden')
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
 local detailed=tooltip(4894)
 assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
 assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
   'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
-for _,i in ipairs({5,6}) do
+local ordinaryID=tooltip(6948)
+assert(ordinaryID=='Item ID: 6948',
+  'Show IDs on must add an item ID to ordinary items without quest uses')
+typedHook(GameTooltip,{id=6948,type=222})
+assert(#GameTooltip.lines==1,
+  'multiple item callbacks must not duplicate the native item ID row')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot\nSpell ID: 3044',
+  'Show IDs on must add exactly one native spell ID without altering spell text')
+-- A protected/forbidden native tooltip may reject AddLine. The item and
+-- spell typed callbacks must contain that failure instead of throwing into WoW.
+local originalAddLine=GameTooltip.AddLine
+local originalChat=DEFAULT_CHAT_FRAME.AddMessage
+local tooltipErrors={}
+DEFAULT_CHAT_FRAME.AddMessage=function(_,message)
+  tooltipErrors[#tooltipErrors+1]=message
+end
+GameTooltip:ClearLines()
+GameTooltip.AddLine=function() error('mock protected tooltip line') end
+local itemSafe=pcall(typedHook,GameTooltip,{id=6948,type=222})
+local spellSafe=pcall(typedHooks[333],GameTooltip,{id=3044,type=333})
+GameTooltip.AddLine=originalAddLine
+DEFAULT_CHAT_FRAME.AddMessage=originalChat
+assert(itemSafe and spellSafe,'native ID callback errors must never escape into the UI')
+assert(#tooltipErrors==1 and tooltipErrors[1]:find('Tooltip error',1,true),
+  'native tooltip errors should be reported only once')
+for _,i in ipairs({3,4}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
 end
 local compact=tooltip(4894)
 assert(not compact:find('(Level 15)',1,true),'level-off setting failed')
 assert(not compact:find('Bags:',1,true),'breakdown-off setting failed')
 assert(compact:find('Have 5 / Need 5',1,true),'essential Have/Need changed')
-assert(QuestItemTrackerDB.settings.showQuestIDs==true,'settings not persisted')
+assert(QuestItemTrackerDB.settings.showIDs==true,'unified setting not persisted')
 button.scripts.OnClick(button,'LeftButton')
 assert(not panel:IsShown(),'minimap click did not close settings')
 SlashCmdList.QUESTITEMTRACKER('options')
@@ -500,6 +897,13 @@ reset.scripts.OnClick(reset)
 local restored=tooltip(4894)
 assert(not restored:find('Quest ID:',1,true),'reset did not hide quest IDs')
 assert(not restored:find('Item ID:',1,true),'reset did not hide item IDs')
+assert(tooltip(6948)=='',
+  'reset must hide ordinary stock item identifiers too')
+GameTooltip:ClearLines()
+GameTooltip:AddLine('Arcane Shot')
+typedHooks[333](GameTooltip,{id=3044,type=333})
+assert(table.concat(GameTooltip.lines,'\n')=='Arcane Shot',
+  'reset must hide stock spell identifiers too')
 assert(restored:find('(Level 15)',1,true),'reset did not show quest levels')
 assert(restored:find('Bags: 3 | Bank: 2',1,true),'reset did not show breakdown')
 assert(not restored:find('FUTURE QUEST',1,true),'reset did not hide future labels')
@@ -612,7 +1016,7 @@ assert(diskDatabase.settings.minimapPosition
 -- account-wide SavedVariables table gets injected. The original code kept
 -- the throwaway DB local forever, causing all future writes to disappear.
 _G.QuestItemTrackerDB=nil
-assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+dofile('tests/load_addon.lua')()
 local throwawayDatabase=QuestItemTrackerDB
 assert(type(throwawayDatabase)=='table' and throwawayDatabase~=diskDatabase,
   'delayed SavedVariables scenario must create a distinct temporary table')

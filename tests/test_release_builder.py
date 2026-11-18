@@ -54,6 +54,21 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertNotIn("BigWigs", body)
         self.assertNotIn("LibDBIcon", body)
 
+    def test_beta_version_from_toc_and_test_zip(self):
+        (self.root / "QuestItemTracker/QuestItemTracker.toc").write_text(
+            "## Version: 0.7-beta.1\nQuestItemTracker.lua\n"
+        )
+        (self.root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [0.7-beta.1] - 2026-11-17\n\n- Test turn-ins.\n"
+        )
+        self.assertEqual(rb.project_version(self.root), "0.7-beta.1")
+        self.assertEqual(rb.current_changes(self.root, "0.7-beta.1"), "- Test turn-ins.")
+        with tempfile.TemporaryDirectory() as folder:
+            package = rb.create_package(self.root, Path(folder), "0.7-beta.1")
+            self.assertEqual(package.name, "QITForeverV0.7-beta.1.zip")
+        self.assertEqual(rb.make_curseforge_metadata("0.7-beta.1", "- Test")["releaseType"], "beta")
+        rb.check_tag("0.7-beta.1", "v0.7-beta.1")
+
     def test_tag_mismatch_fails(self):
         with self.assertRaises(ValueError):
             rb.check_tag("0.2", "v0.3")
@@ -135,7 +150,7 @@ class ReleaseBuilderTests(unittest.TestCase):
             archive = rb.create_package(project, Path(folder), rb.project_version(project))
             with zipfile.ZipFile(archive) as z:
                 self.assertEqual(z.read("QuestItemTracker/Media/QITForeverBadge.tga"), data)
-                lua = z.read("QuestItemTracker/QuestItemTracker.lua").decode()
+                lua = z.read("QuestItemTracker/UI/Minimap.lua").decode()
                 self.assertIn("QIT_BADGE_TEXTURE", lua)
                 self.assertIn("0.96, 0.79, 0.40", lua)  # gold tooltip header
 
@@ -143,6 +158,14 @@ class ReleaseBuilderTests(unittest.TestCase):
         addon = self.root / "QuestItemTracker"
         (addon / "QuestItemTracker.lua").write_text("-- QIT_BADGE_TEXTURE")
         with self.assertRaisesRegex(ValueError, "Required UI artwork missing"):
+            rb.create_package(self.root, self.root, "0.2")
+
+    def test_missing_toc_module_blocks_package(self):
+        addon = self.root / "QuestItemTracker"
+        (addon / "QuestItemTracker.toc").write_text(
+            "## Version: 0.2\nCore/Absent.lua\nQuestItemTracker.lua\n"
+        )
+        with self.assertRaisesRegex(ValueError, "Missing or invalid .toc Lua module"):
             rb.create_package(self.root, self.root, "0.2")
 
     def test_curseforge_dependency_relation(self):
