@@ -30,6 +30,11 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.11 RELEASE-CANDIDATE SAFETY
+- Protect ordinary item/spell ID writes against restricted tooltip frames.
+- Version-check every Lua module in CI, not only the original bootstrap.
+- No intended change to the working beta.10 display, pin or colors.
+
 V0.7-BETA.10 STOCK IDS + DISTINCT TOOLTIP HEADINGS
 - With stock Forever UI, Show IDs includes ordinary item IDs and spell IDs,
   as well as QITF's own quest IDs. Disabling it hides QITF-added IDs.
