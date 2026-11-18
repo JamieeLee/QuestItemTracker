@@ -8,6 +8,8 @@ on:
 jobs:
   lua:
     runs-on: ubuntu-latest
+    outputs:
+      stable: ${{ steps.build.outputs.stable }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.3
@@ -61,7 +63,7 @@ jobs:
           if git diff --name-only FETCH_HEAD HEAD | grep -Eq '^QuestItemTracker/QuestItemTracker\.(lua|toc)$'; then
             OLD=$(git show FETCH_HEAD:QuestItemTracker/QuestItemTracker.toc | sed -n 's/^## Version: //p')
             NEW=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
-            python3 -c 'import sys; old=tuple(map(int,sys.argv[1].split("."))); new=tuple(map(int,sys.argv[2].split("."))); assert new > old, f"Addon code changed without a newer version: {old} -> {new}"; print(f"Version advanced: {old} -> {new}")' "$OLD" "$NEW"
+            python3 -c 'import re,sys; p=r"^(\d+)\.(\d+)(?:\.(\d+))?(?:-beta\.(\d+))?$"; a=re.fullmatch(p,sys.argv[1]); b=re.fullmatch(p,sys.argv[2]); assert a and b, "Invalid version"; cv=lambda m:(int(m[1]),int(m[2]),int(m[3] or 0),0 if m[4] else 1,int(m[4] or 0)); assert cv(b)>cv(a), f"Addon code changed without a newer version: {sys.argv[1]} -> {sys.argv[2]}"; print(f"Version advanced: {sys.argv[1]} -> {sys.argv[2]}")' "$OLD" "$NEW"
           fi
 
       - name: Build and check test installable folder
@@ -73,6 +75,11 @@ jobs:
           VERSION=$(sed -n 's/^## Version: //p' QuestItemTracker/QuestItemTracker.toc)
           unzip -t "dist/QITForeverV${VERSION}.zip"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Upload unpacked addon as test artifact (NO nested ZIP)
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +102,7 @@ jobs:
   # A merge with the same version (docs/CI edits) is skipped automatically.
   publish_github:
     name: Publish version to GitHub + CurseForge (after passing checks)
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lua.outputs.stable == 'true' }}
     needs: lua
     runs-on: ubuntu-latest
     permissions:

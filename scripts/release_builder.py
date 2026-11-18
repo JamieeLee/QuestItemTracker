@@ -17,7 +17,7 @@ from pathlib import Path
 ADDON = "QuestItemTracker"
 PREFIX = "QITForeverV"
 VERSIONS = re.compile(r"^## \[([^\]]+)\] - (\d{4}-\d\d-\d\d)\s*$", re.M)
-VERSION = re.compile(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
+VERSION = re.compile(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-beta\.[1-9][0-9]*)?$")
 INVALID_IN_PACKAGE = {".zip", ".rar", ".7z", ".tar", ".gz", ".tgz"}
 DEPENDENCY_URL = "https://www.curseforge.com/wow/addons/questiedb"
 
@@ -26,7 +26,7 @@ def project_version(root: Path) -> str:
     toc = (root / ADDON / f"{ADDON}.toc").read_text(encoding="utf-8")
     matches = re.findall(r"^## Version:\s*(\S+)\s*$", toc, re.M)
     if len(matches) != 1 or not VERSION.fullmatch(matches[0]):
-        raise ValueError("Expected exactly one numeric '## Version: X.Y[.Z]' in QuestItemTracker.toc")
+        raise ValueError("Expected exactly one '## Version: X.Y[.Z][-beta.N]' in QuestItemTracker.toc")
     return matches[0]
 
 
@@ -155,7 +155,7 @@ def make_curseforge_metadata(version: str, changes: str) -> dict:
         "changelog": release_notes(version, changes),
         "changelogType": "markdown",
         "displayName": f"QITF-v{version} (WoW Forever)",
-        "releaseType": "release",
+        "releaseType": "beta" if "-beta." in version else "release",
         "relations": {"projects": [{"slug": "questiedb", "type": "requiredDependency"}]},
     }
     # CurseForge game version 17053 = WoW Forever 1.60.1 (Interface 16001).

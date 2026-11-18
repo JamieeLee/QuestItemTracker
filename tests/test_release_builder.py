@@ -54,6 +54,21 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertNotIn("BigWigs", body)
         self.assertNotIn("LibDBIcon", body)
 
+    def test_beta_version_from_toc_and_test_zip(self):
+        (self.root / "QuestItemTracker/QuestItemTracker.toc").write_text(
+            "## Version: 0.7-beta.1\nQuestItemTracker.lua\n"
+        )
+        (self.root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [0.7-beta.1] - 2026-11-17\n\n- Test turn-ins.\n"
+        )
+        self.assertEqual(rb.project_version(self.root), "0.7-beta.1")
+        self.assertEqual(rb.current_changes(self.root, "0.7-beta.1"), "- Test turn-ins.")
+        with tempfile.TemporaryDirectory() as folder:
+            package = rb.create_package(self.root, Path(folder), "0.7-beta.1")
+            self.assertEqual(package.name, "QITForeverV0.7-beta.1.zip")
+        self.assertEqual(rb.make_curseforge_metadata("0.7-beta.1", "- Test")["releaseType"], "beta")
+        rb.check_tag("0.7-beta.1", "v0.7-beta.1")
+
     def test_tag_mismatch_fails(self):
         with self.assertRaises(ValueError):
             rb.check_tag("0.2", "v0.3")
