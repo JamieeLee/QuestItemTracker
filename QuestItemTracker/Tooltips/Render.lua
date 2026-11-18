@@ -389,7 +389,9 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     if crowded and #hoverRows > 0 then S.turnInHoverRows[tooltip] = hoverRows end
     capture.hoverRows = hoverRows
     S.qitCaptures[tooltip] = capture
-    if type(tooltip.Show) == "function" then tooltip:Show() end
+    -- The owner/client decides when to Show and reflow the tooltip.
+    -- Re-showing here can recurse through another UI's OnShow font skin
+    -- and cause clipping or a second round of ID insertion.
     return true
 end
 
