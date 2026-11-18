@@ -169,13 +169,16 @@ end
 
 local function TryPinFromVisibleSource()
     if S.pinnedInfo or not ShiftHeld() then return end
-    local candidates = { GameTooltip, ItemRefTooltip }
-    for _, source in ipairs(candidates) do
-        if source and S.qitCaptures[source]
-            and (type(source.IsShown) ~= "function" or source:IsShown()) then
-            PinCurrentItem(source)
-            return
-        end
+    local source = GameTooltip
+    if source and S.qitCaptures[source]
+        and (type(source.IsShown) ~= "function" or source:IsShown()) then
+        PinCurrentItem(source)
+        return
+    end
+    source = ItemRefTooltip
+    if source and source ~= GameTooltip and S.qitCaptures[source]
+        and (type(source.IsShown) ~= "function" or source:IsShown()) then
+        PinCurrentItem(source)
     end
 end
 
