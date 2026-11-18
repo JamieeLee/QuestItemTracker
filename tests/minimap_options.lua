@@ -22,7 +22,7 @@ _G.C_AddOns = {
   end,
   GetAddOnMetadata=function(addon,key)
   assert(addon=='QuestItemTracker','version metadata must target the internal addon name')
-  if key=='Version' then return '0.7-beta.3' end
+  if key=='Version' then return '0.7-beta.4' end
 end}
 _G.DEFAULT_CHAT_FRAME = {AddMessage=function(_, message) print('CHAT: '..message) end}
 _G.SlashCmdList = {}
@@ -242,7 +242,7 @@ _G.hooksecurefunc=function(t,method,hook)
   local fn=t[method]
   t[method]=function(self,...) local r=fn(self,...);hook(self,...);return r end
 end
-local chunk=assert(loadfile('QuestItemTracker/QuestItemTracker.lua')); chunk('QuestItemTracker')
+local loadQIT = dofile('tests/load_addon.lua'); loadQIT()
 local main
 for _, f in ipairs(frames) do if f.events.PLAYER_LOGIN then main=f;break end end
 assert(main,'main event frame absent')
@@ -402,7 +402,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.3' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.4' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -836,7 +836,7 @@ assert(diskDatabase.settings.minimapPosition
 -- account-wide SavedVariables table gets injected. The original code kept
 -- the throwaway DB local forever, causing all future writes to disappear.
 _G.QuestItemTrackerDB=nil
-assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+dofile('tests/load_addon.lua')()
 local throwawayDatabase=QuestItemTrackerDB
 assert(type(throwawayDatabase)=='table' and throwawayDatabase~=diskDatabase,
   'delayed SavedVariables scenario must create a distinct temporary table')

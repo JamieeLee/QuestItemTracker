@@ -18,7 +18,19 @@ jobs:
           sudo apt-get install -y lua5.3
       - name: Parse addon source and tests
         run: |
-          luac5.3 -p QuestItemTracker/QuestItemTracker.lua
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          toc = Path('QuestItemTracker/QuestItemTracker.toc')
+          modules = [line.strip() for line in toc.read_text().splitlines()
+                     if line.strip().endswith('.lua')]
+          assert len(modules) >= 10 and modules[-1] == 'QuestItemTracker.lua', modules
+          for module in modules:
+              path = toc.parent / module
+              assert path.is_file(), f'Missing .toc Lua file: {path}'
+              subprocess.run(['luac5.3', '-p', str(path)], check=True)
+          print(f'Syntax checked {len(modules)} TOC Lua modules')
+          PY
           luac5.3 -p tests/faction_and_source_items.lua
           luac5.3 -p tests/minimap_options.lua
           luac5.3 -p tests/quest_item_pathways.lua

@@ -4,6 +4,15 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.4] - 2026-11-17
+
+- **Architectural cleanup:** Split the monolithic addon into ordered Core, UI, TurnIns, and Tooltips modules. The main Lua file is now a small bootstrap and event coordinator, not a feature dumping ground.
+- **Shared state and functions:** Cross-module dependencies use the explicitly owned addon namespace, with one shared API for reusable operations. Keep quest history/retention logic, tooltip decoration, location decisions, and UI presentation in their respective modules.
+- **Load order is tested:** Standalone mock tests load the .toc files in actual WoW order, and CI syntax checks every referenced Lua file. The release builder validates declared module files.
+- **Shift investigation:** Added `/qit pin` to report Shift state, selected item, pin attempts and the last capture status. Shift remains the default; no unverified alternate modifier. Pinning still requires confirmation in the actual client before release.
+- **Stable UI preserved:** No global width overrides for the stock UI. EllesmereUI-specific clipping remains a separate compatibility investigation.
+- **Test build only:** `0.7-beta.4`; no merge or public release.
+
 ## [0.7-beta.3] - 2026-11-17
 
 - **Shift pin reliability:** Move Shift-pinned information management onto an independent always-active controller; do not rely on the bag tooltip's own OnUpdate script or a pinned GameTooltip's OnUpdate. Capture immediately if Shift is already held during an item hover, and release the saved panel when Shift is lifted.

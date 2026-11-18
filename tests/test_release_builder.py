@@ -150,7 +150,7 @@ class ReleaseBuilderTests(unittest.TestCase):
             archive = rb.create_package(project, Path(folder), rb.project_version(project))
             with zipfile.ZipFile(archive) as z:
                 self.assertEqual(z.read("QuestItemTracker/Media/QITForeverBadge.tga"), data)
-                lua = z.read("QuestItemTracker/QuestItemTracker.lua").decode()
+                lua = z.read("QuestItemTracker/UI/Minimap.lua").decode()
                 self.assertIn("QIT_BADGE_TEXTURE", lua)
                 self.assertIn("0.96, 0.79, 0.40", lua)  # gold tooltip header
 
@@ -158,6 +158,14 @@ class ReleaseBuilderTests(unittest.TestCase):
         addon = self.root / "QuestItemTracker"
         (addon / "QuestItemTracker.lua").write_text("-- QIT_BADGE_TEXTURE")
         with self.assertRaisesRegex(ValueError, "Required UI artwork missing"):
+            rb.create_package(self.root, self.root, "0.2")
+
+    def test_missing_toc_module_blocks_package(self):
+        addon = self.root / "QuestItemTracker"
+        (addon / "QuestItemTracker.toc").write_text(
+            "## Version: 0.2\\nCore/Absent.lua\\nQuestItemTracker.lua\\n"
+        )
+        with self.assertRaisesRegex(ValueError, "Missing or invalid .toc Lua module"):
             rb.create_package(self.root, self.root, "0.2")
 
     def test_curseforge_dependency_relation(self):

@@ -124,7 +124,7 @@ function GameTooltip:ClearLines()self.lines={} end
 _G.hooksecurefunc=function(obj,key,hook)
  local func=obj[key]; obj[key]=function(self,...)local ret=func(self,...); hook(self,...);return ret end
 end
-assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+dofile('tests/load_addon.lua')()
 local main,button,panel
 for _,f in ipairs(frames) do if f.events.PLAYER_LOGIN then main=f end end
 assert(main,'main frame not found')

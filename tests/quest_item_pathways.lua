@@ -166,7 +166,7 @@ function GameTooltip:SetHyperlink()end
 function GameTooltip:SetOwner()end
 function GameTooltip:ClearLines()self.lines={} end
 _G.hooksecurefunc=function(obj,k,hook)local old=obj[k];obj[k]=function(self,...)local val=old(self,...);hook(self,...);return val end end
-assert(loadfile('QuestItemTracker/QuestItemTracker.lua'))('QuestItemTracker')
+dofile('tests/load_addon.lua')()
 local main
 for _,f in ipairs(frames) do if f.events.PLAYER_LOGIN then main=f end end
 assert(main)

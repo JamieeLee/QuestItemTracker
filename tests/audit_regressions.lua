@@ -1,7 +1,6 @@
 -- QIT mock Forever runtime: protect quest snapshot cache, native active quest
 -- fallback, strict objective matching, and DB repeatable-status consistency.
 
-local file = arg[1] or 'QuestItemTracker/QuestItemTracker.lua'
 local questLogCalls, completedListCalls, bagMetadataCalls = 0, 0, 0
 local eventFrame, worker, activeObjectives
 local history = {}

@@ -30,6 +30,13 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.4 MODULAR REFACTOR
+- Addon subsystems now live in Core, UI, TurnIns, and Tooltips folders.
+- Main file only coordinates events and lifecycle; .toc defines load order.
+- /qit pin displays pin diagnostics (Shift state, item, and last attempt)
+  when testing WoW client behavior. It never modifies other addons.
+- The Shift interaction remains experimental until confirmed in game.
+
 V0.7-BETA.3 PIN FIX + CLEAN TURN-IN WRAPPING
 - The Shift lock now uses its own update controller, independent of bag
   tooltip repaint/hide behavior. Holding Shift shows a clearly marked pinned

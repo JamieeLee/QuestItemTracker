@@ -93,7 +93,17 @@ def create_package(root: Path, output: Path, version: str):
 
     # Never ship a new icon reference without its actual texture. This is
     # checked before release notes or publication, including in PR test ZIPs.
-    lua_source = (addon_dir / f"{ADDON}.lua").read_text(encoding="utf-8")
+    toc_lines = (addon_dir / f"{ADDON}.toc").read_text(encoding="utf-8").splitlines()
+    declared = [line.strip() for line in toc_lines if line.strip().endswith(".lua")]
+    if not declared or declared[-1] != f"{ADDON}.lua" or len(set(declared)) != len(declared):
+        raise ValueError("Invalid .toc Lua module order or duplicate module")
+    module_paths = []
+    for relative in declared:
+        path = (addon_dir / relative).resolve()
+        if not path.is_relative_to(addon_dir.resolve()) or not path.is_file():
+            raise ValueError(f"Missing or invalid .toc Lua module: {relative}")
+        module_paths.append(path)
+    lua_source = "\\n".join(path.read_text(encoding="utf-8") for path in module_paths)
     if "QIT_BADGE_TEXTURE" in lua_source:
         for name, size in (("QITForeverBadge.tga", 32), ("QITIcon.tga", 64),
                            ("StatusCircle.tga", 32)):
