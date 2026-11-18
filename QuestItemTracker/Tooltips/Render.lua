@@ -34,17 +34,17 @@ local ClearTurnInHover = assert(api.ClearTurnInHover, "QIT load order: ClearTurn
 -- Reuse the same compact, full-text formatting for regular turn-ins and
 -- optional nearest hints. WoW's native tooltip may truncate a long colored
 -- AddLine even with wrapText=true, especially near narrow bag windows.
-local function AddLocationDetailLine(tooltip, indent, label, place)
+local function AddLocationDetailLine(addLine, indent, label, place)
     local split = string.find(place, " — ", 1, true)
     local npc = split and string.sub(place, 1, split - 1)
     local zone = split and string.sub(place, split + #" — ")
     if npc and zone and (#npc + #zone + #label + 2) >= 36 then
-        tooltip:AddLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
+        addLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
             .. npc .. "|r", 0.8, 0.8, 0.8, true)
-        tooltip:AddLine(indent .. "         |cffdecfb9"
+        addLine(indent .. "         |cffdecfb9"
             .. zone .. "|r", 0.8, 0.8, 0.8, true)
     else
-        tooltip:AddLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
+        addLine(indent .. "|cffabb1b7" .. label .. ": |r|cffdecfb9"
             .. place .. "|r", 0.8, 0.8, 0.8, true)
     end
 end
@@ -108,7 +108,10 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
             matches[questID] = nil
         end
     end
-    if not next(matches) then return false end
+    if not next(matches) then
+        S.qitCaptures[tooltip] = nil
+        return false
+    end
     ClearTurnInHover(tooltip)
 
     local bags, bank = CountItemInventory(itemID)
@@ -128,16 +131,24 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     -- Mark this tooltip before rendering: Show() may invoke tooltip hooks again.
     S.decoratedTooltips[tooltip] = itemID
 
-    S.qitStartLines[tooltip] = SafeCall(tooltip.NumLines, tooltip) or 0
-    tooltip:AddLine(" ")
-    tooltip:AddLine("|cff66ccffQuest Item Tracker Forever|r")
-    if SettingEnabled("showItemIDs") then
-        tooltip:AddLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
+    -- Capture QITF-authored lines as they are rendered, not by scraping
+    -- GameTooltip's recycled native fontstrings after the fact.
+    local capture = { itemID = itemID, lines = {}, hoverRows = {} }
+    local function AddCapturedLine(text, red, green, blue, wrap)
+        tooltip:AddLine(text, red, green, blue, wrap)
+        capture.lines[#capture.lines + 1] = {
+            text = text, r = red, g = green, b = blue, wrap = wrap,
+        }
+    end
+    AddCapturedLine(" ")
+    AddCapturedLine("|cff66ccffQuest Item Tracker Forever|r")
+    if SettingEnabled("showIDs") then
+        AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
     end
     if SettingEnabled("showInventoryBreakdown") then
-        tooltip:AddLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
+        AddCapturedLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
     else
-        tooltip:AddLine("Have " .. totalHave, 0.75, 0.9, 0.75)
+        AddCapturedLine("Have " .. totalHave, 0.75, 0.9, 0.75)
     end
 
     local recommendation, recommendationColor = AssessItemRetention(matches, activeMap)
@@ -152,10 +163,10 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         if separator then
             local decision = string.sub(recommendation, 1, separator - 1)
             local explanation = string.sub(recommendation, separator)
-            tooltip:AddLine(recommendationColor .. decision .. "|r|cffd8dee8"
+            AddCapturedLine(recommendationColor .. decision .. "|r|cffd8dee8"
                 .. explanation .. "|r", 0.9, 0.9, 0.9, true)
         else
-            tooltip:AddLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
+            AddCapturedLine(recommendationColor .. recommendation .. "|r", 0.9, 0.9, 0.9, true)
         end
     end
 
@@ -212,8 +223,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         end
     end
 
-    local showIDs = SettingEnabled("showQuestIDs")
-    local showFuture = SettingEnabled("showFutureStatusLabels")
+    local showIDs = SettingEnabled("showIDs")
+    local showFuture = false -- old future-label toggle retired
     local showLevels = SettingEnabled("showQuestLevels")
 
     -- Multiple distinct faction/city quests can share the same title and level
@@ -268,11 +279,11 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         if #row.ids > 1 then
             nameLine = nameLine .. "  |cff95a9b8(" .. #row.ids .. " quests)|r"
         end
-        tooltip:AddLine(nameLine)
+        AddCapturedLine(nameLine)
         if grouped == "faction" and #row.ids >= 2 then
             local nearest = ClosestFactionTurnIn(row)
             if nearest then
-                AddLocationDetailLine(tooltip, indent, "Closest", nearest)
+                AddLocationDetailLine(AddCapturedLine, indent, "Closest", nearest)
             end
         end
         if row.turnIns and #row.turnIns > 0 then
@@ -280,7 +291,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 local line = SafeCall(tooltip.NumLines, tooltip)
                 if line then
                     hoverRows[#hoverRows + 1] = {
-                        line = line, title = row.name, destinations = row.turnIns,
+                        line = line, captureLine = #capture.lines,
+                        title = row.name, destinations = row.turnIns,
                     }
                 end
             else
@@ -290,7 +302,7 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                 elseif #row.turnIns > 2 then
                     place = place .. " (+" .. (#row.turnIns - 1) .. " other locations)"
                 end
-                AddLocationDetailLine(tooltip, indent, "Turn in", place)
+                AddLocationDetailLine(AddCapturedLine, indent, "Turn in", place)
             end
         end
 
@@ -326,19 +338,19 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                     or ("Quest ID: " .. row.id)
                 statusLine = statusLine .. (status and "  |  " or "") .. idsText
             end
-            tooltip:AddLine(statusLine, 0.78, 0.78, 0.78)
+            AddCapturedLine(statusLine, 0.78, 0.78, 0.78)
         end
 
         local entry = row.entry
         if entry.required and entry.required > 0 and not IsInformationalOnly(entry) then
-            tooltip:AddLine(indent .. "Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
+            AddCapturedLine(indent .. "Have " .. totalHave .. " / Need " .. entry.required, 0.75, 0.9, 0.75)
         elseif entry.detail then
-            tooltip:AddLine(indent .. entry.detail, 0.7, 0.7, 0.7, true)
+            AddCapturedLine(indent .. entry.detail, 0.7, 0.7, 0.7, true)
         end
     end
 
     if #seasonalQuests > 0 then
-        tooltip:AddLine("|cffff992f— SEASONAL QUEST —|r")
+        AddCapturedLine("|cffff992f— SEASONAL QUEST —|r")
         for _, row in ipairs(CompactQuestRows(seasonalQuests)) do ShowQuestRow(row, "seasonal") end
     end
     for _, row in ipairs(CompactQuestRows(ordinaryQuests)) do ShowQuestRow(row, nil) end
@@ -354,26 +366,28 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         elseif faction == "Alliance" then
             headingColor = "|cff889ee0" -- Alliance blue with violet undertone
         end
-        tooltip:AddLine(headingColor .. "FACTION TURN-INS|r")
+        AddCapturedLine(headingColor .. "FACTION TURN-INS|r")
         for _, row in ipairs(CompactQuestRows(factionTurnIns)) do ShowQuestRow(row, "faction") end
     end
     if #repeatableQuests > 0 then
-        tooltip:AddLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
+        AddCapturedLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
         for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
     end
     if #lowLevelQuests > 0 then
-        tooltip:AddLine("LOW-LEVEL QUESTS", 0.6, 0.72, 0.84)
+        AddCapturedLine("LOW-LEVEL QUESTS", 0.6, 0.72, 0.84)
         for _, row in ipairs(CompactQuestRows(lowLevelQuests)) do ShowQuestRow(row, "lowLevel") end
     end
 
     if partial then
-        tooltip:AddLine("Checking remaining quests...", 0.7, 0.8, 1, true)
-    elseif activeCount == 0 and futureCount > 0 and SettingEnabled("showFutureStatusLabels") then
-        tooltip:AddLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
+        AddCapturedLine("Checking remaining quests...", 0.7, 0.8, 1, true)
+    elseif activeCount == 0 and futureCount > 0 and showFuture then
+        AddCapturedLine("No current quest needs this item; it has future quest uses.", 0.9, 0.8, 0.55, true)
     elseif activeCount == 0 and futureCount == 0 and completedCount > 0 then
-        tooltip:AddLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
+        AddCapturedLine("No remaining known quest uses.", 0.65, 0.85, 1, true)
     end
     if crowded and #hoverRows > 0 then S.turnInHoverRows[tooltip] = hoverRows end
+    capture.hoverRows = hoverRows
+    S.qitCaptures[tooltip] = capture
     if type(tooltip.Show) == "function" then tooltip:Show() end
     return true
 end
