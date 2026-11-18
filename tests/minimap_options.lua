@@ -214,6 +214,8 @@ local function tooltipFontString(value,index)
     SetText=function(self,v)self.text=v end,
     GetHeight=function(self)return self.height end,
     SetHeight=function(self,v)self.height=v end,
+    GetAlpha=function(self)return self.alpha or 1 end,
+    SetAlpha=function(self,v)self.alpha=v end,
     GetTop=function(self)return 600-(self.index-1)*16 end,
     GetBottom=function(self)return 586-(self.index-1)*16 end,
   }
@@ -402,7 +404,7 @@ local seenTitle, versionLabel, panelVersionCount = false, nil, 0
 for _, f in ipairs(frames) do
   if f.kind=='FontString' and f.parent==panel then
     if f.text=='Quest Item Tracker Forever' then seenTitle=true end
-    if f.text=='v0.7-beta.4' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
+    if f.text=='v0.7-beta.5' then versionLabel=f; panelVersionCount=panelVersionCount+1 end
   end
 end
 assert(seenTitle, 'settings title changed unexpectedly')
@@ -418,26 +420,22 @@ end
 assert(matchedIcon,'minimap button must use the approved QITF FOREVER badge')
 local checks={}
 for _, f in ipairs(frames) do if f.kind=='CheckButton' then checks[#checks+1]=f end end
-assert(#checks==9,'expected nine settings switches')
+assert(#checks==6,'expected six settings switches')
 assert(checks[1]:GetChecked(),'faction filter should be enabled by default')
-assert(not checks[7]:GetChecked(),'future labels must be hidden by default')
-assert(not checks[2]:GetChecked(),'other addon IDs must stay visible by default')
-assert(checks[3]:GetChecked()==false and checks[4]:GetChecked()==false,'QIT IDs must be off by default')
-assert(checks[5]:GetChecked() and checks[6]:GetChecked(),'levels/count breakdown must be on by default')
-assert(checks[8]:GetChecked(),'turn-in name and zone should be on by default')
-assert(not checks[9]:GetChecked(),'turn-in coordinates must be off by default')
+assert(not checks[2]:GetChecked(),'IDs must be hidden by default')
+assert(checks[3]:GetChecked() and checks[4]:GetChecked(),
+  'levels and bag/bank counts should be enabled by default')
+assert(checks[5]:GetChecked(),'turn-in name and zone should be on by default')
+assert(not checks[6]:GetChecked(),'turn-in coordinates should be off by default')
 
 -- Every setting explains its purpose when hovered, without technical jargon.
 -- The expanded hit area lets players hover (and click) on the label as well.
 local expectedHelps={
-  {'Only show my faction quests','opposite faction'},
-  {'Hide IDs from other addons','off by default'},
-  {'Show QITF quest IDs','quest ID'},
-  {'Show QITF item IDs','item'},
-  {'Show quest levels','Level 60'},
+  {'Only show my faction quests','other faction'},
+  {'Show IDs','technical identifiers'},
+  {'Show quest levels','quest'},
   {'Show bag / bank breakdown','bags and bank'},
-  {'Show future quest labels','KEEP or NEEDED'},
-  {'Show turn-in NPC and zone','on by default'},
+  {'Show turn-in NPC and zone','quest-finisher'},
   {'Show turn-in coordinates','Off by default'},
 }
 for i, expected in ipairs(expectedHelps) do
@@ -474,14 +472,14 @@ assert(singleTurnIn:find('Brewmaster Test',1,true)
   'single quest must show complete finisher name and zone')
 assert(not singleTurnIn:find('(42.5, 67.2)',1,true),
   'turn-in coordinates should be off by default')
-checks[9]:SetChecked(true); checks[9].scripts.OnClick(checks[9])
+checks[6]:SetChecked(true); checks[6].scripts.OnClick(checks[6])
 assert(tooltip(43000):find('(42.5, 67.2)',1,true),
   'turn-in coordinates should appear when enabled')
-checks[9]:SetChecked(false); checks[9].scripts.OnClick(checks[9])
-checks[8]:SetChecked(false); checks[8].scripts.OnClick(checks[8])
+checks[6]:SetChecked(false); checks[6].scripts.OnClick(checks[6])
+checks[5]:SetChecked(false); checks[5].scripts.OnClick(checks[5])
 assert(not tooltip(43000):find('Turn in:',1,true),
   'turn-in details toggle must hide name and zone')
-checks[8]:SetChecked(true); checks[8].scripts.OnClick(checks[8])
+checks[5]:SetChecked(true); checks[5].scripts.OnClick(checks[5])
 
 
 -- Long names must wrap at the NPC/zone boundary instead of ellipsizing
@@ -563,12 +561,20 @@ assert(not tooltip(4894):find('Closest:',1,true),
 _G.LibStub=nil
 
 -- Shift pins the original item information independently of the bag tooltip.
+local pinController
+for _, f in ipairs(frames) do
+  if f ~= main and f.kind == 'Frame' and f.scripts.OnUpdate
+    and not f.events.PLAYER_LOGIN then
+    pinController = f
+  end
+end
+assert(pinController, 'independent pin controller must be installed')
 local beforePin=tooltip(4894)
 -- Simulate a custom bag UI whose native tooltip stops receiving OnUpdate.
 local oldTooltipUpdate=GameTooltip.scripts.OnUpdate
 GameTooltip.scripts.OnUpdate=nil
 shiftDown=true
-main.scripts.OnUpdate(main,0.15)
+pinController.scripts.OnUpdate(pinController,0.15)
 local pinned
 for _,f in ipairs(frames) do
   if f.name=='QITPinnedItemInfo' then pinned=f end
@@ -592,14 +598,14 @@ for index,line in ipairs(pinned.lines) do
 end
 assert(pinnedDonation,'pinned copy has no hoverable quest row')
 cursorX,cursorY=300,593-(pinnedDonation-1)*16
-main.scripts.OnUpdate(main,0.2)
+pinController.scripts.OnUpdate(pinController,0.2)
 assert(bubble.shown,'hovering grouped quest in pinned panel must show bubble')
 local pinnedDetail=table.concat(bubble.lines,' ')
 assert(pinnedDetail:find('Quartermaster 1',1,true)
    and pinnedDetail:find('Quartermaster 5',1,true),
    'pinned grouped hover bubble lost individual turn-in destinations')
 shiftDown=false
-main.scripts.OnUpdate(main,0.2)
+pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown() and not bubble.shown,
   'releasing Shift must close pinned panel and its side bubble')
 cursorX,cursorY=100,500
@@ -608,41 +614,53 @@ shiftDown=true
 tooltip(4894)
 assert(pinned:IsShown(),'holding Shift before hover must pin immediately')
 shiftDown=false
-main.scripts.OnUpdate(main,0.2)
+pinController.scripts.OnUpdate(pinController,0.2)
 assert(not pinned:IsShown(),'release after immediate pin must work')
 GameTooltip.scripts.OnUpdate=oldTooltipUpdate
 
--- Simulate the inventory UI's ItemID and IconID rows above our QIT section.
-local function withExternalIDs()
+-- One ID setting controls standard item tooltip IDs without editing the
+-- reused FontStrings' text, height or width.
+local function withExternalIDs(itemID)
   GameTooltip:ClearLines()
-  GameTooltip:AddDoubleLine('ItemID','4894')
-  GameTooltip:AddDoubleLine('IconID','132919')
-  typedHook(GameTooltip,{id=4894,type=222})
+  if GameTooltip.scripts.OnTooltipCleared then
+    GameTooltip.scripts.OnTooltipCleared(GameTooltip)
+  end
+  GameTooltip:AddDoubleLine('ItemID', tostring(itemID))
+  GameTooltip:AddDoubleLine('IconID', '132919')
+  typedHook(GameTooltip,{id=itemID,type=222})
   return _G.GameTooltipTextLeft1,_G.GameTooltipTextRight1,
          _G.GameTooltipTextLeft2,_G.GameTooltipTextRight2
 end
-local a,b,c,d=withExternalIDs()
-assert(a:GetText()=='ItemID' and b:GetText()=='4894' and c:GetText()=='IconID' and d:GetText()=='132919',
-  'external IDs must remain visible when suppression is off')
+local a,b,c,d=withExternalIDs(4894)
+assert(a:GetText()=='ItemID' and b:GetText()=='4894'
+  and c:GetText()=='IconID' and d:GetText()=='132919',
+  'native ID text must never be modified')
+assert(a:GetAlpha()==0 and c:GetAlpha()==0,'Show IDs off should conceal technical IDs')
+assert(a:GetHeight()==14 and c:GetHeight()==14,'technical ID height must remain intact')
+
+GameTooltip:ClearLines()
+if GameTooltip.scripts.OnTooltipCleared then
+  GameTooltip.scripts.OnTooltipCleared(GameTooltip)
+end
+GameTooltip:AddLine('Hearthstone')
+GameTooltip:AddLine('Use: Returns you to The Crossroads.')
+GameTooltip:AddDoubleLine('ItemID','6948')
+typedHook(GameTooltip,{id=6948,type=222})
+assert(_G.GameTooltipTextLeft2:GetText()=='Use: Returns you to The Crossroads.',
+  'QITF must not alter Hearthstone description text')
+assert(_G.GameTooltipTextLeft2:GetHeight()==14,
+  'QITF must not alter Hearthstone description height')
+assert(_G.GameTooltipTextLeft3:GetAlpha()==0,
+  'ordinary item ID row should honor Show IDs off')
+
 checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
-a,b,c,d=withExternalIDs()
-assert(a:GetText()=='' and b:GetText()=='' and c:GetText()=='' and d:GetText()=='',
-  'opt-in suppression must hide both sides of external metadata rows')
-assert(a:GetHeight()==0 and c:GetHeight()==0,'hidden ID rows must not occupy full height')
--- QIT's own IDs are independently controlled, even while external IDs are hidden.
-checks[3]:SetChecked(true);checks[3].scripts.OnClick(checks[3])
-checks[4]:SetChecked(true);checks[4].scripts.OnClick(checks[4])
-a,b,c,d=withExternalIDs()
-local ownIDs=table.concat(GameTooltip.lines,'\\n')
-assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID was suppressed')
-assert(ownIDs:find('Quest ID: 821',1,true),'QIT quest ID was suppressed')
-assert(a:GetText()=='' and c:GetText()=='','external metadata visible while suppression enabled')
-checks[3]:SetChecked(false);checks[3].scripts.OnClick(checks[3])
-checks[4]:SetChecked(false);checks[4].scripts.OnClick(checks[4])
+a,b,c,d=withExternalIDs(4894)
+assert(a:GetAlpha()==1 and c:GetAlpha()==1,
+  'Show IDs on must allow ID rows provided by any UI')
+local ownIDs=table.concat(GameTooltip.lines,'\n')
+assert(ownIDs:find('Item ID: 4894',1,true),'QIT item ID did not follow unified option')
+assert(ownIDs:find('Quest ID: 821',1,true),'quest ID did not follow unified option')
 checks[2]:SetChecked(false);checks[2].scripts.OnClick(checks[2])
-a,b,c,d=withExternalIDs()
-assert(a:GetText()=='ItemID' and c:GetText()=='IconID',
-  'turning off external suppression must leave the other addon metadata alone')
 -- This toggle changes only tooltip presentation, never quest-matching logic.
 local clean=tooltip(4894)
 assert(clean:find("Chen's Empty Keg",1,true),'quest name not shown')
@@ -687,32 +705,22 @@ assert(clean:find('(Level 15)',1,true),'quest level should appear by default')
 assert(not clean:find('Quest ID:',1,true) and not clean:find('Item ID:',1,true),'IDs visible by default')
 assert(clean:find('Bags: 3 | Bank: 2',1,true),'default bank counts missing')
 assert(tooltip(6948)=='','ordinary item was decorated')
-checks[7]:SetChecked(true);checks[7].scripts.OnClick(checks[7])
-local detailedFuture=tooltip(4894)
-assert(detailedFuture:find('FUTURE QUEST',1,true),'optional future quest status not restored')
-assert(detailedFuture:find('LOW-LEVEL QUESTS',1,true) and not detailedFuture:find('FUTURE USE · GREY QUEST',1,true),
-  'grey quests should stay grouped even when detailed status labels are enabled')
-assert(detailedFuture:find('REPEATABLE QUESTS',1,true) and occurrences(detailedFuture,'REPEATABLE QUEST')==1,
-  'repeatable heading should not duplicate its per-quest label in detailed mode')
-assert(detailedFuture:find('No current quest needs',1,true),'optional future footer not restored')
-checks[7]:SetChecked(false);checks[7].scripts.OnClick(checks[7])
-assert(not tooltip(4894):find('FUTURE QUEST',1,true),'future status does not turn off')
-for _,i in ipairs({3,4}) do
-  checks[i]:SetChecked(true);checks[i].scripts.OnClick(checks[i])
-end
+assert(not tooltip(4894):find('FUTURE QUEST',1,true),
+  'redundant future quest labels should remain hidden')
+checks[2]:SetChecked(true);checks[2].scripts.OnClick(checks[2])
 local detailed=tooltip(4894)
 assert(detailed:find('Quest ID: 821',1,true),'quest ID setting failed')
 assert(detailed:find('Quest IDs: 1001, 1002, 1003, 1004, 1005',1,true),
   'collapsed quest IDs must remain accessible when enabled')
 assert(detailed:find('Item ID: 4894',1,true),'item ID setting failed')
-for _,i in ipairs({5,6}) do
+for _,i in ipairs({3,4}) do
  checks[i]:SetChecked(false);checks[i].scripts.OnClick(checks[i])
 end
 local compact=tooltip(4894)
 assert(not compact:find('(Level 15)',1,true),'level-off setting failed')
 assert(not compact:find('Bags:',1,true),'breakdown-off setting failed')
 assert(compact:find('Have 5 / Need 5',1,true),'essential Have/Need changed')
-assert(QuestItemTrackerDB.settings.showQuestIDs==true,'settings not persisted')
+assert(QuestItemTrackerDB.settings.showIDs==true,'unified setting not persisted')
 button.scripts.OnClick(button,'LeftButton')
 assert(not panel:IsShown(),'minimap click did not close settings')
 SlashCmdList.QUESTITEMTRACKER('options')
