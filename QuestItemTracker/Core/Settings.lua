@@ -39,59 +39,59 @@ end
 
 -- Keep the default tooltip focused on player-facing information; technical IDs are opt-in.
 local DEFAULT_SETTINGS = {
-    showQuestIDs = false,
-    showItemIDs = false,
-    suppressExternalIDs = false,
+    showIDs = false,
     showQuestLevels = true,
     showInventoryBreakdown = true,
-    showFutureStatusLabels = false,
     filterByFaction = true,
     showTurnInDetails = true,
     showTurnInCoordinates = false,
 }
 local function SettingEnabled(key)
     local value = S.DB.settings[key]
+    if value == nil and key == "showIDs" then
+        return S.DB.settings.showQuestIDs == true
+            or S.DB.settings.showItemIDs == true
+    end
     if value == nil then return DEFAULT_SETTINGS[key] == true end
     return value == true
 end
 
--- This optional filter only touches isolated technical ID rows that another
--- addon put on a shared item tooltip. It never modifies QIT's own ID settings,
--- and stops at the QIT header so QIT-generated lines are left untouched.
--- Tooltip font strings are reused by WoW, so restore adjusted heights on reset.
-local EXTERNAL_ID_KINDS = {
+-- Unified Show IDs setting. Technical ID rows may be supplied by another
+-- addon using the same GameTooltip. FontStrings are reused: never change
+-- text, geometry or anchors, which can clip later tooltips (e.g. Hearthstone).
+local ID_KINDS = {
     itemid = true, iconid = true, questid = true, spellid = true,
     npcid = true, textureid = true, modelid = true,
 }
-local suppressedLineHeights = setmetatable({}, { __mode = "k" })
+local originalAlpha = setmetatable({}, { __mode = "k" })
 
-local function RestoreExternalIDHeights(tooltip)
-    local stored = suppressedLineHeights[tooltip]
+local function RestoreExternalIDVisibility(tooltip)
+    local stored = originalAlpha[tooltip]
     if not stored then return end
-    for fontString, height in pairs(stored) do
-        if type(height) == "number" and height > 0 then
-            SafeCall(fontString.SetHeight, fontString, height)
+    for fontString, alpha in pairs(stored) do
+        if type(alpha) == "number" then
+            SafeCall(fontString.SetAlpha, fontString, alpha)
         end
     end
-    suppressedLineHeights[tooltip] = nil
+    originalAlpha[tooltip] = nil
 end
 
 local function SuppressExternalTooltipIDs(tooltip)
-    if not SettingEnabled("suppressExternalIDs") or not tooltip then return end
-    -- Standard GameTooltip exposes named TextLeftN/TextRightN font strings.
-    -- Do not guess at the internals of arbitrary custom tooltip frames.
+    if not tooltip then return end
+    -- Restore previous rows first; they may have been reused for different
+    -- text without firing a clear/hide event.
+    RestoreExternalIDVisibility(tooltip)
+    if SettingEnabled("showIDs") then return end
     local name = SafeCall(tooltip.GetName, tooltip)
     local count = tonumber(SafeCall(tooltip.NumLines, tooltip))
     if type(name) ~= "string" or name == "" or not count then return end
-    local stored = suppressedLineHeights[tooltip]
-    for index = 1, math.min(count, 100) do
-        local left = _G[name .. "TextLeft" .. index]
+
+    local stored
+    for i = 1, math.min(count, 100) do
+        local left = _G[name .. "TextLeft" .. i]
         local line = left and SafeCall(left.GetText, left)
         if type(line) == "string" and line ~= "" then
-            if string.find(line, "Quest Item Tracker Forever", 1, true) then
-                break
-            end
-            -- A full metadata row, not explanatory prose containing "item id".
+            if string.find(line, "Quest Item Tracker Forever", 1, true) then break end
             local clean = string.gsub(line, "|c%x%x%x%x%x%x%x%x", "")
             clean = string.gsub(clean, "|r", "")
             clean = string.gsub(clean, "^%s+", "")
@@ -100,23 +100,22 @@ local function SuppressExternalTooltipIDs(tooltip)
                 or string.match(clean, "^([%a%s]+)%s+%d+$")
                 or string.match(clean, "^([%a%s]+)$")
             local normalized = label and string.lower(string.gsub(label, "%s+", ""))
-            if normalized and EXTERNAL_ID_KINDS[normalized] then
-                local right = _G[name .. "TextRight" .. index]
+            if normalized and ID_KINDS[normalized] then
                 stored = stored or {}
-                for _, fontString in ipairs({left, right}) do
-                    if fontString and type(fontString.SetText) == "function" then
-                        local height = SafeCall(fontString.GetHeight, fontString)
-                        if type(height) == "number" and height > 0 and stored[fontString] == nil then
-                            stored[fontString] = height
-                            SafeCall(fontString.SetHeight, fontString, 0)
+                local right = _G[name .. "TextRight" .. i]
+                for _, stringRegion in ipairs({ left, right }) do
+                    if stringRegion and type(stringRegion.SetAlpha) == "function" then
+                        local alpha = SafeCall(stringRegion.GetAlpha, stringRegion)
+                        if type(alpha) == "number" then
+                            stored[stringRegion] = alpha
+                            SafeCall(stringRegion.SetAlpha, stringRegion, 0)
                         end
-                        SafeCall(fontString.SetText, fontString, "")
                     end
                 end
             end
         end
     end
-    if stored then suppressedLineHeights[tooltip] = stored end
+    if stored then originalAlpha[tooltip] = stored end
 end
 
 -- QuestieDB exposes active-flavor faction race masks in contract 3+. Forever
@@ -158,6 +157,6 @@ NS.defaults = DEFAULT_SETTINGS
 
 api.GetTooltipItem = GetTooltipItem
 api.SettingEnabled = SettingEnabled
-api.RestoreExternalIDHeights = RestoreExternalIDHeights
+api.RestoreExternalIDVisibility = RestoreExternalIDVisibility
 api.SuppressExternalTooltipIDs = SuppressExternalTooltipIDs
 api.QuestMatchesPlayerFaction = QuestMatchesPlayerFaction
