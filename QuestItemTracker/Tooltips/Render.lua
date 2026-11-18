@@ -146,7 +146,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     end
     -- Native item text already has its own spacing. Adding a blank line here
     -- creates an exaggerated gap under the item name and on the pinned copy.
-    AddCapturedLine("|cff66ccffQuest Item Tracker Forever|r")
+    -- Muted brass header: distinct from the default blue item-type labels.
+    AddCapturedLine("|cffd4b476Quest Item Tracker Forever|r")
     if SettingEnabled("showIDs") then
         AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75, nil, false)
     end
@@ -376,7 +377,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
         for _, row in ipairs(CompactQuestRows(factionTurnIns)) do ShowQuestRow(row, "faction") end
     end
     if #repeatableQuests > 0 then
-        AddCapturedLine("REPEATABLE QUESTS", 0.4, 0.78, 1)
+        -- Subdued lavender differentiates repeatables from crafting reagents.
+        AddCapturedLine("REPEATABLE QUESTS", 0.74, 0.61, 0.87)
         for _, row in ipairs(CompactQuestRows(repeatableQuests)) do ShowQuestRow(row, "repeatable") end
     end
     if #lowLevelQuests > 0 then
