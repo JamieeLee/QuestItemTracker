@@ -30,6 +30,12 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.6 PIN VISIBILITY + TOOLTIP SPACING
+- Pinned quest information opens beside the ordinary tooltip, not on top.
+- Its quest-row hover bubble does not steal mouse input.
+- Removes the unwanted extra blank line ahead of QITF's quest details.
+- /qit pin reports the last successful pin and release after Shift is let go.
+
 V0.7-BETA.5 SAFE TOOLTIP + SIMPLIFIED MENU
 - One Show IDs switch covers QITF identifiers and recognizable ID rows from
   standard tooltip frames, including IDs added by custom UI addons.
