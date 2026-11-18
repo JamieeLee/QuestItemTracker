@@ -134,17 +134,21 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
     -- Capture QITF-authored lines as they are rendered, not by scraping
     -- GameTooltip's recycled native fontstrings after the fact.
     local capture = { itemID = itemID, lines = {}, hoverRows = {} }
-    local function AddCapturedLine(text, red, green, blue, wrap)
+    local function AddCapturedLine(text, red, green, blue, wrap, withoutIDs)
         tooltip:AddLine(text, red, green, blue, wrap)
+        -- Keep a semantic ID-free alternative for the separate pinned view.
+        -- false means this line consists entirely of technical identifiers;
+        -- a string preserves the non-ID status portion of a combined line.
         capture.lines[#capture.lines + 1] = {
             text = text, r = red, g = green, b = blue, wrap = wrap,
+            withoutIDs = withoutIDs,
         }
     end
     -- Native item text already has its own spacing. Adding a blank line here
     -- creates an exaggerated gap under the item name and on the pinned copy.
     AddCapturedLine("|cff66ccffQuest Item Tracker Forever|r")
     if SettingEnabled("showIDs") then
-        AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75)
+        AddCapturedLine("Item ID: " .. itemID, 0.75, 0.75, 0.75, nil, false)
     end
     if SettingEnabled("showInventoryBreakdown") then
         AddCapturedLine("Have " .. totalHave .. "  (Bags: " .. bags .. " | Bank: " .. bank .. ")", 0.75, 0.9, 0.75)
@@ -336,7 +340,8 @@ local function AddTooltipLines(tooltip, data, explicitItemID)
                     or ("Quest ID: " .. row.id)
                 statusLine = statusLine .. (status and "  |  " or "") .. idsText
             end
-            AddCapturedLine(statusLine, 0.78, 0.78, 0.78)
+            AddCapturedLine(statusLine, 0.78, 0.78, 0.78, nil,
+                showIDs and (status and (indent .. status) or false) or nil)
         end
 
         local entry = row.entry
