@@ -50,7 +50,11 @@ _G.QuestDB={
   end,
   questLevel=function(id) return (id>=1001 and id<=1005) and 60 or ((id==700 or id==701) and 6 or 15) end,
   specialFlags=function(id) return (id==901 or id==902) and 1 or 0 end,
-  objectives=function(id) return {nil,nil,{{4894,'Plainstrider Kidney',id==700 and 2 or 5}}} end,
+  objectives=function(id)
+    local items={{4894,'Plainstrider Kidney',id==700 and 2 or 5}}
+    if id==821 then items[#items+1]={43000,'Single Turn-in Item',1} end
+    return {nil,nil,items}
+  end,
   requiredSourceItems=function() return nil end,
   finishedBy=function(id)
     if id>=1001 and id<=1005 then return {{3000+id-1000}} end
