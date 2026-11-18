@@ -30,6 +30,13 @@ V0.6 TOOLTIP PRESENTATION
 - FACTION TURN-INS uses your character's Horde/Alliance-inspired heading color.
 - Existing faction filtering and retention decisions are unchanged.
 
+V0.7-BETA.5 SAFE TOOLTIP + SIMPLIFIED MENU
+- One Show IDs switch covers QITF identifiers and recognizable ID rows from
+  standard tooltip frames, including IDs added by custom UI addons.
+- ID hiding does not edit item tooltip text or layout.
+- Independent Shift pinning uses QITF's own captured quest information.
+- The future quest labels control was removed to simplify the menu.
+
 V0.7-BETA.4 MODULAR REFACTOR
 - Addon subsystems now live in Core, UI, TurnIns, and Tooltips folders.
 - Main file only coordinates events and lifecycle; .toc defines load order.
@@ -70,13 +77,10 @@ TOOLTIP PREFERENCES
 Click the draggable minimap button, or type /qit options.
 - Hover over a setting for an explanation.
 - Only show my faction quests (ON by default).
-- Hide technical IDs added by other addons (OFF by default).
-- Show QITF quest IDs and item IDs (OFF by default).
+- Show IDs (OFF by default): unified technical identifier visibility setting.
 - Show quest levels and bag/bank breakdown (ON by default).
 - Show turn-in NPC and zone (ON by default).
 - Show turn-in coordinates (OFF by default).
-- Show future quest labels (OFF by default): names and GREY QUEST markers
-  stay visible when the repeated future-status lines are hidden.
 Settings save automatically. The settings window remembers its position.
 A green/red light indicates whether QuestieDB is ready; hover for details.
 
