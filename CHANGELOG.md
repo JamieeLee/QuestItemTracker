@@ -4,6 +4,14 @@ All notable changes to **Quest Item Tracker Forever (QIT)** are recorded **in th
 
 **Maintenance rule:** On every new release, add a section to **this existing `CHANGELOG.md`**. Do not create `CHANGELOG-vX.md`, `RELEASE_NOTES-vX.md`, `vX.md`, or per-version Markdown files. Keep `README.md` focused on what the addon does and how to use it. Every merged addon-code or `.toc` update must advance the `QuestItemTracker/QuestItemTracker.toc` version and add its notes to this same changelog. Pure documentation/build workflow PRs do not require a version bump. A versioned merge into `main` automatically publishes the tested ZIP and notes to GitHub and CurseForge after CI passes (using the configured CurseForge credentials).
 
+## [0.7-beta.10] - 2026-11-18
+
+- **Stock Forever Show IDs:** The existing Show IDs setting now also adds ordinary item IDs and spell IDs through standard typed tooltip callbacks, including items with no QITF quest associations. QITF retains its own quest IDs, uses no native font rewriting, and deduplicates rows on repeated tooltip callbacks.
+- **Custom UI ownership unchanged:** When EllesmereUI provides its own ID controls, QITF leaves all item/spell ID rendering to the UI and shows "Handled by UI" on the disabled option.
+- **Distinct tooltip palette:** QITF's section heading uses weathered copper (#C88B73), and REPEATABLE QUESTS uses soft lavender (#BD9CDE). No changes to item rarity/type, bag counts, quest difficulty, action status or UI border colors.
+- **Regression tests:** Check ordinary item/spell ID visibility, duplicated typed callbacks, provider handoff, reset defaults, and native-text safety.
+- **Still a draft:** No main merge or release without stock and custom Forever client verification.
+
 ## [0.7-beta.9] - 2026-11-18
 
 - **Stop modifying shared tooltip fonts:** Remove QITF's external ID interception entirely. QITF no longer clears another addon's `ItemID`, `IconID`, or `SpellID` rows or alters native tooltip FontString text, height, width or alpha. This addresses the source of clipped/truncated Hearthstone and spell tooltips and remaining ID gaps; verify the actual in-game result before claiming a fix.
